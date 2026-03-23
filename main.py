@@ -225,6 +225,26 @@ def main() -> None:
         else:
             console.print("[bold red][!] Log Correlation aborted: No file provided.[/bold red]")
 
+    # ==========================
+    # Final Stage: Generate IR Report
+    # ==========================
+    console.print("\n[bold magenta][*] Compiling Execution Findings into Report...[/bold magenta]")
+    
+    try:
+        from modules.report_gen import generate_report
+        session_findings["configuration"] = config
+        
+        with console.status("[bold blue]Generating final report...[/bold blue]"):
+            report_path = generate_report(session_findings, config.get("report_format", "Markdown"))
+            
+        if report_path.startswith("failed"):
+            console.print(f"[bold red][!] Report generation failed: {report_path}[/bold red]")
+        else:
+            console.print(f"[bold green][+] Beautiful report saved successfully at: {report_path}[/bold green]")
+    except Exception as e:
+        console.print(f"[bold red][!] Critical error during report generation: {str(e)}[/bold red]")
+
+
 if __name__ == "__main__":
     try:
         main()

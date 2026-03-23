@@ -40,3 +40,7 @@
 ## Issue #5: Blue Team Log Correlation Engine
 - **Status**: Planning / In Progress
 - **Goal**: Implement `log_analyzer.py` to parse server access/auth logs, matching against known attack signatures (Nmap, Nuclei, custom polyglots) and calculating a Detection Score.
+
+## Issue #6: Incident Response Report Generator
+- **Status**: Planning / In Progress
+- **Goal**: Build `report_gen.py` using Jinja2 to compile the `session_findings` into professional Markdown and HTML reports. As an added DevSecOps enhancement, we will use `shutil.which` to check for `wkhtmltopdf` to optionally convert HTML reports into PDFs with robust `subprocess` error handling.
