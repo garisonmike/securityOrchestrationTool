@@ -6,6 +6,8 @@ Main Entry Point
 
 import sys
 import argparse
+import shutil
+import subprocess
 from typing import Dict, Any, Optional
 
 try:
@@ -93,6 +95,44 @@ def get_user_configuration() -> Optional[Dict[str, Any]]:
         console.print(f"[bold red]An unexpected error occurred during configuration: {e}[/bold red]")
         sys.exit(1)
 
+def check_and_install_missing_tools(config: Dict[str, Any]) -> None:
+    """
+    Checks for required native tools based on selected modules and 
+    prompts the user to install them if they are missing.
+    """
+    required_tools = set()
+    selected_modules = config.get("modules", [])
+    
+    if "Reconnaissance & Enumeration" in selected_modules:
+        required_tools.update(["nmap", "gobuster"])
+    if "Web Vulnerability Fuzzer" in selected_modules:
+        required_tools.add("nuclei")
+        
+    missing_tools = [tool for tool in required_tools if shutil.which(tool) is None]
+    
+    for tool in missing_tools:
+        # Prompt user using Questionary
+        choice = questionary.confirm(
+            f"Required tool '{tool}' is missing from your PATH. Would you like to attempt to install it via 'apt'?"
+        ).ask()
+        
+        if choice:
+            console.print(f"[bold yellow][*] Attempting to install {tool} (may require sudo password)...[/bold yellow]")
+            try:
+                # Assuming a Debian/Ubuntu/Kali based Linux system
+                subprocess.run(['sudo', 'apt-get', 'install', '-y', tool], check=True)
+                
+                if shutil.which(tool):
+                    console.print(f"[bold green][+] {tool} installed successfully![/bold green]")
+                else:
+                    console.print(f"[bold red][!] {tool} installation appeared to succeed, but it's still not in PATH. It will be skipped.[/bold red]")
+            except subprocess.CalledProcessError:
+                console.print(f"[bold red][!] APT failed to install {tool}. It will be skipped.[/bold red]")
+            except Exception as e:
+                console.print(f"[bold red][!] Unexpected error installing {tool}: {e}[/bold red]")
+        else:
+            console.print(f"[bold yellow][!] Skipping installation of {tool}. Modules relying on it will bypass those scans.[/bold yellow]")
+
 def main() -> None:
     """Main program execution loop."""
     display_banner()
@@ -115,6 +155,9 @@ def main() -> None:
             value_str = str(value)
         console.print(f"  [cyan]{key.capitalize()}[/cyan]: [yellow]{value_str}[/yellow]")
     
+    console.print("\n[bold yellow]Checking dependencies...[/bold yellow]\n")
+    check_and_install_missing_tools(config)
+
     console.print("\n[bold yellow]System readiness achieved. Initiating Module Execution...[/bold yellow]\n")
 
     # Master findings dictionary
@@ -130,6 +173,16 @@ def main() -> None:
         console.print("[bold green][+] Reconnaissance complete. Findings summary:[/bold green]")
         # Provide a stylized output of the dictionary using rich
         console.print(recon_results)
+
+    if "Web Vulnerability Fuzzer" in config.get("modules", []):
+        from modules.web_fuzzer import run_fuzzer
+        console.print("\n[bold magenta][*] Launching Web Vulnerability Fuzzer Module...[/bold magenta]")
+        with console.status("[bold blue]Running Nuclei and Custom Polyglot Injectors...[/bold blue]"):
+            fuzzer_results = run_fuzzer(config)
+        session_findings["fuzzer"] = fuzzer_results
+        
+        console.print("[bold green][+] Web Vulnerability Fuzzer complete. Findings summary:[/bold green]")
+        console.print(fuzzer_results)
 
 if __name__ == "__main__":
     try:

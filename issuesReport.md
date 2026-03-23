@@ -22,3 +22,13 @@
 ## Issue #3: Web Vulnerability Fuzzer Module
 - **Status**: Planning
 - **Goal**: Implement Nuclei wrapper and custom polyglot fuzzing logic using Python `requests`.
+
+- **Implemented Solution**:
+  - Validated Nuclei environment with `shutil.which`.
+  - Configured Nuclei wrapper `subprocess.run` to use `-tags cve,xss,sqli,misconfig -jsonl -silent` for heavily targeted fast scans. Handled Nuclei stdout dynamically using `json.loads` to cleanly format back to a Python dictionary.
+  - Implemented custom `requests.get()` fuzzer targeting dummy parameters.
+  - Wrote regex iterations scanning `response.text` for common DB tracebacks (MySQL, Oracle, PostgreSQL, etc) when a polyglot is injected.
+  - Used `response.elapsed.total_seconds()` wrapped around baseline requests versus `SLEEP(5)` / `pg_sleep(5)` payloads to confidently log time-based injections without risking false positives.
+  - Required exact, unmodified reflection matching of `alert('NCI_HACKATHON')` before declaring an XSS capability.
+
+- **Critical Fix Applied**: Addressed Nuclei v3 architecture issues wherein it installs its template library to `.local/nuclei-templates` instead of `~/nuclei-templates` or the system binary directory. Mapped the `run_nuclei` custom python method to force the `.local` absolute file path via `-t` flag, resolving the `[FTL] no templates provided` subprocess panic. 

@@ -36,8 +36,9 @@ def grab_headers(target: str) -> Dict[str, str]:
     findings = {"url": web_target, "is_online": False, "headers": {}}
     
     try:
+        import urllib3
         # Timeout set to 5 seconds to prevent hanging, suppress insecure warnings for missing certs
-        requests.packages.urllib3.disable_warnings() 
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning) 
         response = requests.get(web_target, timeout=5, verify=False)
         findings["is_online"] = True
         findings["status_code"] = response.status_code
