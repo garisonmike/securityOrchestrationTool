@@ -205,3 +205,33 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# -----------------
+# Security Orchestration Tool Specifics
+# -----------------
+# Keys and Certificates
+*.pem
+*.key
+*.cert
+*.cer
+id_rsa
+id_rsa.pub
+*.p12
+*.pfx
+
+# Secrets and Configs
+secrets.json
+credentials/
+config.ini
+config.yaml
+
+# Local Reports and Outputs
+reports/
+*.report.md
+*.report.html
+
+# OS/IDE
+.DS_Store
+.idea/
+.vscode/
+
