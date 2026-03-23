@@ -43,7 +43,7 @@ The module runs Nmap/Gobuster without hanging, catches subprocess.CalledProcessE
 
 Issue #3: Web Vulnerability Fuzzer Module
 
-Status: [ ] Open
+Status: [x] Closed
 Description: Build the web_fuzzer.py module to test for SQLi, XSS, and SSRF using polyglot payloads and Nuclei.
 Tasks:
 
@@ -62,7 +62,7 @@ Outputs are cleanly formatted and appended to the master findings dictionary.
 
 Issue #4: Privilege Escalation Simulator
 
-Status: [ ] Open
+Status: [x] Closed
 Description: Build the privesc.py module to simulate post-exploitation enumeration via SSH.
 Tasks:
 

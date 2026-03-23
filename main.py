@@ -184,6 +184,26 @@ def main() -> None:
         console.print("[bold green][+] Web Vulnerability Fuzzer complete. Findings summary:[/bold green]")
         console.print(fuzzer_results)
 
+    if "Privilege Escalation Simulator" in config.get("modules", []):
+        from modules.privesc import run_privesc
+        console.print("\n[bold magenta][*] Launching Privilege Escalation Simulator...[/bold magenta]")
+        
+        # We need credentials to proceed
+        console.print("[yellow]SSH Credentials required for post-exploitation simulation.[/yellow]")
+        ssh_user = questionary.text("Enter SSH Username:").ask()
+        ssh_pass = questionary.password("Enter SSH Password:").ask()
+        
+        if ssh_user and ssh_pass:
+            ssh_creds = {"username": ssh_user, "password": ssh_pass}
+            with console.status("[bold blue]Connecting via SSH and simulating privesc vectors...[/bold blue]"):
+                privesc_results = run_privesc(config, ssh_creds)
+            session_findings["privesc"] = privesc_results
+            
+            console.print("[bold green][+] PrivEsc Simulation complete. Findings summary:[/bold green]")
+            console.print(privesc_results)
+        else:
+            console.print("[bold red][!] PrivEsc Simulation aborted: Missing credentials.[/bold red]")
+
 if __name__ == "__main__":
     try:
         main()

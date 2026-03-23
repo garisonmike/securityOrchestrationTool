@@ -32,3 +32,7 @@
   - Required exact, unmodified reflection matching of `alert('NCI_HACKATHON')` before declaring an XSS capability.
 
 - **Critical Fix Applied**: Addressed Nuclei v3 architecture issues wherein it installs its template library to `.local/nuclei-templates` instead of `~/nuclei-templates` or the system binary directory. Mapped the `run_nuclei` custom python method to force the `.local` absolute file path via `-t` flag, resolving the `[FTL] no templates provided` subprocess panic. 
+
+## Issue #4: Privilege Escalation Simulator
+- **Status**: Planning
+- **Goal**: Implement paramiko-based SSH post-exploitation enumeration. Handle credentials inputs seamlessly. Catch authentication errors. Validate sudo configuration, SUID binaries, and global configurations parsing the POSIX OS stdout streams safely.
