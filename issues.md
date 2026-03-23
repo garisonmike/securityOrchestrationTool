@@ -5,7 +5,7 @@ The AI assistant must complete these issues sequentially, updating the status on
 
 Issue #1: Project Initialization and Interactive CLI Skeleton
 
-Status: [ ] Open
+Status: [x] Closed
 Description: Set up the core application architecture, including the interactive terminal menu using InquirerPy or Questionary, and stylized console output using Rich.
 Tasks:
 
@@ -24,7 +24,7 @@ The user's selections are stored in a configuration dictionary/object to be pass
 
 Issue #2: Reconnaissance & Enumeration Module
 
-Status: [ ] Open
+Status: [x] Closed
 Description: Build the recon.py module to grab server banners and run directory/subdomain fuzzing using native OS tools.
 Tasks:
 

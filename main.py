@@ -115,7 +115,21 @@ def main() -> None:
             value_str = str(value)
         console.print(f"  [cyan]{key.capitalize()}[/cyan]: [yellow]{value_str}[/yellow]")
     
-    console.print("\n[bold yellow]System readiness achieved. Module execution pending...[/bold yellow]")
+    console.print("\n[bold yellow]System readiness achieved. Initiating Module Execution...[/bold yellow]\n")
+
+    # Master findings dictionary
+    session_findings: Dict[str, Any] = {"config": config}
+
+    if "Reconnaissance & Enumeration" in config.get("modules", []):
+        from modules.recon import run_recon
+        console.print("[bold cyan][*] Launching Reconnaissance & Enumeration Module...[/bold cyan]")
+        with console.status("[bold blue]Running Recon scans (this could take a moment)...[/bold blue]"):
+            recon_results = run_recon(config)
+        session_findings["recon"] = recon_results
+        
+        console.print("[bold green][+] Reconnaissance complete. Findings summary:[/bold green]")
+        # Provide a stylized output of the dictionary using rich
+        console.print(recon_results)
 
 if __name__ == "__main__":
     try:
