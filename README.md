@@ -2,6 +2,8 @@
 
 A professional, Python-based DevSecOps command-line tool designed to orchestrate security assessments, simulate vulnerability exploitation, and correlate blue team logs. 
 
+*Note: This project was originally developed as part of a Capture The Flag (CTF) challenge.*
+
 ##  Disclaimer
 **This tool is strictly for educational purposes and authorized security testing.** 
 The offensive modules included within this tool must only be run against networks and systems for which you have explicit, documented permission. The authors and contributors are not responsible for any misuse, damage, or illegal activities caused by utilizing this software.
