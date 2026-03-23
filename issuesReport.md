@@ -36,3 +36,7 @@
 ## Issue #4: Privilege Escalation Simulator
 - **Status**: Planning
 - **Goal**: Implement paramiko-based SSH post-exploitation enumeration. Handle credentials inputs seamlessly. Catch authentication errors. Validate sudo configuration, SUID binaries, and global configurations parsing the POSIX OS stdout streams safely.
+
+## Issue #5: Blue Team Log Correlation Engine
+- **Status**: Planning / In Progress
+- **Goal**: Implement `log_analyzer.py` to parse server access/auth logs, matching against known attack signatures (Nmap, Nuclei, custom polyglots) and calculating a Detection Score.

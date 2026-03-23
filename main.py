@@ -204,6 +204,27 @@ def main() -> None:
         else:
             console.print("[bold red][!] PrivEsc Simulation aborted: Missing credentials.[/bold red]")
 
+    if "Blue Team Log Correlation Engine" in config.get("modules", []):
+        from modules.log_analyzer import analyze_logs
+        console.print("\n[bold magenta][*] Launching Blue Team Log Correlation Engine...[/bold magenta]")
+        
+        log_file = questionary.path("Enter path to the log file to analyze (e.g., /var/log/apache2/access.log):").ask()
+        
+        if log_file:
+            with console.status(f"[bold blue]Analyzing {log_file} for tool signatures...[/bold blue]"):
+                log_results = analyze_logs(log_file)
+            session_findings["log_analysis"] = log_results
+            
+            if log_results.get("status") == "error":
+                for err in log_results.get("errors", []):
+                    console.print(f"[bold red][!] {err}[/bold red]")
+            else:
+                score = log_results.get("detection_score", 0)
+                console.print(f"[bold green][+] Log Analysis complete. Detection Score: {score}[/bold green]")
+                console.print(log_results)
+        else:
+            console.print("[bold red][!] Log Correlation aborted: No file provided.[/bold red]")
+
 if __name__ == "__main__":
     try:
         main()
