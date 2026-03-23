@@ -235,3 +235,7 @@ reports/
 .idea/
 .vscode/
 
+
+# Agile Trackers
+issues.md
+issuesReport.md
