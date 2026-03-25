@@ -6,12 +6,49 @@ This report summarizes the findings from the automated security orchestration en
 ## Recon Data
 {% if recon %}
 Recon module executed successfully.
-{% for key, val in recon.items() %}
-**{{ key | title }}**:
-```text
-{{ val }}
-```
+
+### Target Environment & Tech Stack (OPSEC Level: {{ recon.opsec_level | default('Unknown') | title }})
+
+#### Hierarchical Tech Stack
+{% if recon.hierarchical_stack %}
+{% for category, items in recon.hierarchical_stack.items() %}
+**{{ category | replace("_", " ") | title }}**:
+{% if items and items|length > 0 %}
+{% for item in items %}
+- {{ item }}
 {% endfor %}
+{% else %}
+- *None detected*
+{% endif %}
+{% endfor %}
+{% else %}
+No hierarchical stack data available.
+{% endif %}
+
+#### Searchsploit Results
+{% if recon.searchsploit_results and recon.searchsploit_results|length > 0 %}
+{% for query, results in recon.searchsploit_results.items() %}
+{% if results is iterable and results is not string %}
+**Exploits for "{{ query }}"**:
+{% for res in results %}
+- {{ res.Title | default('Unknown') }} (EDB-ID: {{ res.EDB_ID | default('N/A') }}) -> `{{ res.Path }}`
+{% endfor %}
+{% endif %}
+{% endfor %}
+{% else %}
+No Searchsploit mappings found.
+{% endif %}
+
+#### Standard Findings
+{% for key, val in recon.items() %}
+{% if key not in ["hierarchical_stack", "searchsploit_results", "opsec_level", "target", "profile"] %}
+**{{ key | replace("_", " ") | title }}**:
+```text
+{{ val | string }}
+```
+{% endif %}
+{% endfor %}
+
 {% else %}
 Recon module was not executed.
 {% endif %}

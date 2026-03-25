@@ -7,7 +7,7 @@ import requests
 import re
 import os
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List
 
 def clean_target_for_nmap(target: str) -> str:
     """Removes http/https prefix for nmap."""
@@ -21,14 +21,134 @@ def format_target_for_web(target: str) -> str:
 
 def check_dependencies() -> Dict[str, bool]:
     """
-    Checks if required native tools (nmap, gobuster, whatweb) are present in the system PATH.
+    Checks if required native tools are present in the system PATH.
     """
     deps = {
         'nmap': shutil.which('nmap') is not None,
         'gobuster': shutil.which('gobuster') is not None,
-        'whatweb': shutil.which('whatweb') is not None
+        'whatweb': shutil.which('whatweb') is not None,
+        'searchsploit': shutil.which('searchsploit') is not None
     }
     return deps
+
+def run_searchsploit(query: str) -> List[Dict[str, Any]]:
+    """Runs searchsploit for a given tech stack query and returns JSON results."""
+    if not shutil.which('searchsploit'):
+        return []
+    try:
+        result = subprocess.run(['searchsploit', query, '--json'], capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            parsed = json.loads(result.stdout)
+            return parsed.get("RESULTS_EXPLOIT", [])[:5]  # Return top 5 results to avoid clutter
+    except Exception as e:
+        pass
+    return []
+
+def stealth_fingerprint(target: str) -> Dict[str, Any]:
+    """
+    Stealth mode: Max 1-2 standard GET requests.
+    Extracts headers and passive HTML meta/script properties.
+    """
+    stack = {"frontend": [], "web_server": [], "backend": [], "database": []}
+    try:
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        
+        # Request 1: Main page
+        resp = requests.get(target, timeout=5, verify=False)
+        
+        # Parse Headers
+        if 'Server' in resp.headers:
+            stack["web_server"].append(resp.headers['Server'])
+        if 'X-Powered-By' in resp.headers:
+            stack["backend"].append(resp.headers['X-Powered-By'])
+            
+        # Passive HTML Parsing
+        html = resp.text
+        # Generator meta tags
+        generator = re.search(r'<meta\s+name=["\']generator["\']\s+content=["\']([^"\']+)["\']', html, re.I)
+        if generator:
+            stack["frontend"].append(generator.group(1))
+            
+        # Common framework script tags (e.g. React/Next/Nuxt)
+        if '_next/static' in html:
+            stack["frontend"].append("Next.js")
+        if 'data-reactroot' in html:
+            stack["frontend"].append("React")
+            
+    except Exception as e:
+        stack["error"] = str(e)
+        
+    return stack
+
+def noisy_fingerprint(target: str, nmap_target: str) -> Dict[str, Any]:
+    """
+    Noisy mode: Active probing, forced errors, and nmap framework/enum scripts.
+    """
+    stack = {"frontend": [], "web_server": [], "backend": [], "database": [], "active_probes": []}
+    
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
+    # 1. Active File Probing
+    common_files = ['CHANGELOG.md', 'README.txt', 'package.json', '.env']
+    for file in common_files:
+        try:
+            probe_url = f"{target.rstrip('/')}/{file}"
+            resp = requests.get(probe_url, timeout=3, verify=False)
+            if resp.status_code == 200 and len(resp.text) > 0 and '<html' not in resp.text[:50].lower():
+                stack["active_probes"].append(f"Found {file}: {resp.text[:100].strip()}...")
+        except:
+            pass
+
+    # 2. Trigger Forced HTTP Error (404/500)
+    try:
+        error_url = f"{target.rstrip('/')}/invalid_path_for_error_123_%ff"
+        resp = requests.get(error_url, timeout=5, verify=False)
+        server_header = resp.headers.get('Server', '')
+        if server_header and server_header not in stack["web_server"]:
+            stack["web_server"].append(server_header)
+        
+        # Analyze error response body for stack traces (e.g. Tomcat, Django, Flask)
+        if 'Apache Tomcat' in resp.text:
+            version_match = re.search(r'Apache Tomcat/([0-9\.]+)', resp.text)
+            if version_match: stack["backend"].append(f"Apache Tomcat {version_match.group(1)}")
+        if 'Werkzeug' in resp.text or 'Flask' in resp.text:
+            stack["backend"].append("Werkzeug/Flask")
+        if 'Django' in resp.text:
+            stack["backend"].append("Django")
+    except:
+        pass
+
+    # 3. Nmap http-enum and http-devframework
+    if shutil.which('nmap'):
+        try:
+            cmd = ['nmap', '-Pn', '-sV', '--script=http-enum,http-devframework', '-p', '80,443', nmap_target]
+            nmap_res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            stack["active_probes"].append(f"Nmap scripts raw output snippet: {nmap_res.stdout[:500]}...")
+            
+            # Simple extractor from nmap output
+            if 'http-devframework: ' in nmap_res.stdout:
+                matches = re.findall(r'http-devframework:\s*(.*)', nmap_res.stdout)
+                stack["backend"].extend(matches)
+        except:
+            pass
+            
+    return stack
+
+def extract_searchsploit_queries(stack: Dict[str, List[str]]) -> List[str]:
+    """Generates searchsploit query strings based on identified stack versions."""
+    queries = set()
+    for category in ["frontend", "web_server", "backend", "database"]:
+        for item in stack.get(category, []):
+            # Clean up the item to a useful query, e.g., "Apache/2.4.41 (Ubuntu)" -> "Apache 2.4.41"
+            parts = item.replace('/', ' ').replace('(', '').replace(')', '').split()
+            if len(parts) >= 2:
+                # likely has a version number
+                queries.add(f"{parts[0]} {parts[1]}")
+            else:
+                queries.add(parts[0])
+    return list(queries)
 
 def grab_headers(target: str) -> Dict[str, Any]:
     """
@@ -39,7 +159,6 @@ def grab_headers(target: str) -> Dict[str, Any]:
     
     try:
         import urllib3
-        # Timeout set to 5 seconds to prevent hanging, suppress insecure warnings for missing certs
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning) 
         response = requests.get(web_target, timeout=5, verify=False)
         findings["is_online"] = True
@@ -58,13 +177,7 @@ def run_whatweb(target: str) -> Dict[str, Any]:
     cmd = ['whatweb', web_target, '-q', '--log-json=-']
 
     try:
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            check=True, 
-            timeout=60
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=60)
         try:
             parsed = json.loads(result.stdout)
             if isinstance(parsed, list) and len(parsed) > 0:
@@ -72,38 +185,23 @@ def run_whatweb(target: str) -> Dict[str, Any]:
                 return {"status": "success", "tech_stack": plugins}
             return {"status": "error", "error_msg": "No plugins found by Whatweb"}
         except json.JSONDecodeError:
-            return {"status": "error", "error_msg": "Failed to parse whatweb JSON", "raw_output": result.stdout}
+            return {"status": "error", "error_msg": "Failed to parse whatweb JSON"}
     except subprocess.CalledProcessError as e:
-        # WhatWeb returns non-zero on some errors/warnings, capture output anyway
-        return {"status": "error", "error_msg": f"Whatweb failed ({e.returncode})", "raw_output": e.stdout + e.stderr}
+        return {"status": "error", "error_msg": f"Whatweb failed ({e.returncode})"}
     except subprocess.TimeoutExpired:
         return {"status": "error", "error_msg": "Whatweb scan timed out."}
     except Exception as e:
         return {"status": "error", "error_msg": f"Unexpected error: {e}"}
 
 def run_nmap(target: str, profile: str) -> Dict[str, Any]:
-    """
-    Executes an Nmap scan (Stealth vs. Noisy) against the target.
-    Handles subprocess timeouts and errors cleanly.
-    """
     nmap_target = clean_target_for_nmap(target)
-    
-    # Define flags based on profile
     if profile.lower() == 'stealth':
-        # -T2 (Polite), -sV (Version detection)
         cmd = ['nmap', '-T2', '-sV', nmap_target]
     else:
-        # Noisy: -T4 (Aggressive), -A (OS detection, version, scripts, traceroute)
         cmd = ['nmap', '-T4', '-A', nmap_target]
 
     try:
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            check=True, 
-            timeout=300 # Wait at most 5 minutes for nmap
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=300)
         return {"status": "success", "raw_output": result.stdout}
     except subprocess.CalledProcessError as e:
         return {"status": "error", "error_msg": f"Nmap failed with exit code {e.returncode}", "raw_output": e.stdout + e.stderr}
@@ -113,83 +211,92 @@ def run_nmap(target: str, profile: str) -> Dict[str, Any]:
         return {"status": "error", "error_msg": f"Unexpected error executing nmap: {e}"}
 
 def run_gobuster(target: str, wordlist: str = "/usr/share/wordlists/dirb/common.txt") -> Dict[str, Any]:
-    """
-    Executes a gobuster directory scan against the target.
-    """
     web_target = format_target_for_web(target)
-    
     if not os.path.exists(wordlist):
         return {"status": "skipped", "error_msg": f"Wordlist not found: {wordlist}"}
 
-    # -q (quiet), -e (expanded mode)
     cmd = ['gobuster', 'dir', '-u', web_target, '-w', wordlist, '-q', '-e']
 
     try:
-        result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            check=True, 
-            timeout=300 # Wait up to 5 minutes
-        )
-        # Parse gobuster output into a list of discovered urls (rudimentary parsing)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=300)
         lines = result.stdout.split('\n')
         discovered = [line.strip() for line in lines if line.strip() and ("Status: 2" in line or "Status: 3" in line)]
         return {"status": "success", "raw_output": result.stdout, "discovered_paths": discovered}
     except subprocess.CalledProcessError as e:
-        # Gobuster returning non-zero usually means it successfully ran but finished with errors or didn't find anything
         return {"status": "error", "error_msg": f"Gobuster failed ({e.returncode})", "raw_output": e.stdout + e.stderr}
     except subprocess.TimeoutExpired:
         return {"status": "error", "error_msg": "Gobuster scan timed out."}
     except Exception as e:
         return {"status": "error", "error_msg": f"Unexpected error executing gobuster: {e}"}
 
+
 def run_recon(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Main entry point for the Reconnaissance module.
-    Expects a config dict with 'target' and 'profile'.
-    Returns a unified dictionary of all recon findings.
     """
     target = config.get('target', '')
     profile = config.get('profile', 'Stealth')
+    opsec_level = config.get('opsec_level', 'stealth').lower()
+    web_target = format_target_for_web(target)
+    nmap_target = clean_target_for_nmap(target)
     
     findings: Dict[str, Any] = {
         "target": target,
         "profile": profile,
+        "opsec_level": opsec_level,
         "dependencies": {},
         "web_headers": {},
         "tech_stack": {},
+        "hierarchical_stack": {},
+        "searchsploit_results": {},
         "nmap_scan": {},
         "gobuster_scan": {}
     }
     
-    # 1. Check Dependencies
     deps = check_dependencies()
     findings["dependencies"] = deps
-    
-    # 2. Grab HTTP Headers and verify target is online
     findings["web_headers"] = grab_headers(target)
     
     if not findings["web_headers"].get("is_online", False):
         findings["error"] = "Target appears to be offline or unreachable via HTTP. Aborting further recon."
         return findings
 
-    # 3. Web Tech Stack Fingerprinting (WhatWeb)
     if deps.get('whatweb'):
         findings["tech_stack"] = run_whatweb(target)
-    else:
-        findings["tech_stack"] = {"status": "skipped", "error_msg": "Whatweb is not installed or not in PATH."}
 
-    # 4. Nmap Scan
+    # Issue #2.5: OPSEC-aware Fingerprinting
+    if opsec_level == 'stealth':
+        stack_findings = stealth_fingerprint(web_target)
+    else:
+        stack_findings = noisy_fingerprint(web_target, nmap_target)
+        
+    # Clean duplicates in stack
+    for k, v in stack_findings.items():
+        if isinstance(v, list):
+            stack_findings[k] = list(set(v))
+            
+    findings["hierarchical_stack"] = stack_findings
+
+    # Issue #2.5: Pipe variables to searchsploit
+    if deps.get('searchsploit'):
+        queries = extract_searchsploit_queries(stack_findings)
+        sploits = {}
+        for q in queries:
+            res = run_searchsploit(q)
+            if res:
+                sploits[q] = res
+        findings["searchsploit_results"] = sploits
+    else:
+        findings["searchsploit_results"] = {"error": "Searchsploit not found in PATH."}
+
+    # Standard tool runs
     if deps.get('nmap'):
         findings["nmap_scan"] = run_nmap(target, profile)
-    else:
-        findings["nmap_scan"] = {"status": "skipped", "error_msg": "Nmap is not installed or not in PATH."}
-
-    # 5. Gobuster Scan
     if deps.get('gobuster'):
-        findings["gobuster_scan"] = run_gobuster(target)
-    else:
-        findings["gobuster_scan"] = {"status": "skipped", "error_msg": "Gobuster is not installed or not in PATH."}
+        if opsec_level == 'stealth':
+            findings["gobuster_scan"] = {"status": "skipped", "error_msg": "Gobuster skipped in stealth mode to prevent logs."}
+        else:
+            findings["gobuster_scan"] = run_gobuster(target)
 
     return findings
+

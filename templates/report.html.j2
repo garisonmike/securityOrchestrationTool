@@ -1,99 +1,149 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Security Orchestration Report</title>
+    <meta charset="utf-8">
+    <title>Automated Security Orchestration Report</title>
     <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px 40px; color: #333; }
-        h1, h2, h3 { color: #0056b3; }
-        .section { margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background: #fafafa; }
-        pre { background: #eee; padding: 10px; border-left: 4px solid #0056b3; overflow-x: auto; }
-        .footer { font-size: 0.9em; color: #777; text-align: center; margin-top: 40px; border-top: 1px solid #ccc; padding-top: 10px; }
+        body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
+        h1 { color: #2c3e50; }
+        h2 { color: #2980b9; border-bottom: 2px solid #2980b9; padding-bottom: 5px; }
+        h3 { color: #16a085; }
+        h4 { color: #8e44ad; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; font-family: "Courier New", Courier, monospace;}
+        .section { margin-bottom: 30px; }
+        .footer { margin-top: 50px; font-size: 0.9em; color: #7f8c8d; border-top: 1px solid #ccc; padding-top: 10px; }
     </style>
 </head>
 <body>
 
-<h1>Automated Security Orchestration Report</h1>
+    <h1>Automated Security Orchestration Report</h1>
 
-<div class="section">
-    <h2>Executive Summary</h2>
-    <p>This report summarizes the findings from the automated security orchestration engine targeting <strong>{{ target }}</strong>.</p>
-</div>
+    <div class="section">
+        <h2>Executive Summary</h2>
+        <p>This report summarizes the findings from the automated security orchestration engine targeting <strong>{{ target }}</strong>.</p>
+    </div>
 
-<div class="section">
-    <h2>Recon Data</h2>
-    {% if recon %}
-        <p>Recon module executed successfully.</p>
-        {% for key, val in recon.items() %}
-            <h3>{{ key | title }}</h3>
-            <pre>{{ val }}</pre>
-        {% endfor %}
-    {% else %}
-        <p>Recon module was not executed.</p>
-    {% endif %}
-</div>
+    <div class="section">
+        <h2>Recon Data</h2>
+        {% if recon %}
+            <p>Recon module executed successfully.</p>
+            
+            <h3>Target Environment & Tech Stack (OPSEC Level: {{ recon.opsec_level | default('Unknown') | title }})</h3>
+            
+            <h4>Hierarchical Tech Stack</h4>
+            {% if recon.hierarchical_stack %}
+                <ul>
+                {% for category, items in recon.hierarchical_stack.items() %}
+                    <li><strong>{{ category | replace("_", " ") | title }}</strong>:
+                        {% if items and items|length > 0 %}
+                            <ul>
+                            {% for item in items %}
+                                <li>{{ item }}</li>
+                            {% endfor %}
+                            </ul>
+                        {% else %}
+                            <em>None detected</em>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <p>No hierarchical stack data available.</p>
+            {% endif %}
 
-<div class="section">
-    <h2>Vulnerability Findings</h2>
-    {% if fuzzer %}
-        <p><strong>Target:</strong> {{ fuzzer.target }}</p>
+            <h4>Searchsploit Results</h4>
+            {% if recon.searchsploit_results and recon.searchsploit_results|length > 0 %}
+                {% for query, results in recon.searchsploit_results.items() %}
+                    {% if results is iterable and results is not string %}
+                        <p><strong>Exploits for "{{ query }}"</strong>:</p>
+                        <ul>
+                        {% for res in results %}
+                            <li>{{ res.Title | default('Unknown') }} (EDB-ID: {{ res.EDB_ID | default('N/A') }}) &rarr; <code>{{ res.Path }}</code></li>
+                        {% endfor %}
+                        </ul>
+                    {% endif %}
+                {% endfor %}
+            {% else %}
+                <p>No Searchsploit mappings found.</p>
+            {% endif %}
 
-        <h3>Nuclei Scans:</h3>
-        <p>Status: {{ fuzzer.nuclei_scan.status }}</p>
-        {% if fuzzer.nuclei_scan.findings %}
-            <ul>
-            {% for finding in fuzzer.nuclei_scan.findings %}
-                <li>{{ finding }}</li>
+            <h4>Standard Findings</h4>
+            {% for key, val in recon.items() %}
+                {% if key not in ["hierarchical_stack", "searchsploit_results", "opsec_level", "target", "profile"] %}
+                    <h3>{{ key | replace("_", " ") | title }}</h3>
+                    <pre>{{ val | string }}</pre>
+                {% endif %}
             {% endfor %}
+        {% else %}
+            <p>Recon module was not executed.</p>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <h2>Vulnerability Findings</h2>
+        {% if fuzzer %}
+            <p><strong>Target</strong>: {{ fuzzer.target }}</p>
+
+            <h3>Nuclei Scans:</h3>
+            <p>Status: {{ fuzzer.nuclei_scan.status }}</p>
+            {% if fuzzer.nuclei_scan.findings %}
+                <ul>
+                {% for finding in fuzzer.nuclei_scan.findings %}
+                    <li>{{ finding }}</li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <p>No immediate findings from Nuclei.</p>
+            {% endif %}
+
+            <h3>Custom Fuzzer Results:</h3>
+            <ul>
+                <li>XSS Findings: {{ fuzzer.custom_fuzzer.xss | length }}</li>
+                <li>SQLi (Error) Findings: {{ fuzzer.custom_fuzzer.sqli_error | length }}</li>
+                <li>SQLi (Time) Findings: {{ fuzzer.custom_fuzzer.sqli_time | length }}</li>
             </ul>
         {% else %}
-            <p>No immediate findings from Nuclei.</p>
+            <p>Web Vulnerability fuzzer was not executed.</p>
         {% endif %}
+    </div>
 
-        <h3>Custom Fuzzer Results:</h3>
-        <ul>
-            <li>XSS Findings: {{ fuzzer.custom_fuzzer.xss | length }}</li>
-            <li>SQLi (Error) Findings: {{ fuzzer.custom_fuzzer.sqli_error | length }}</li>
-            <li>SQLi (Time) Findings: {{ fuzzer.custom_fuzzer.sqli_time | length }}</li>
-        </ul>
-    {% else %}
-        <p>Web Vulnerability fuzzer was not executed.</p>
-    {% endif %}
-</div>
+    <div class="section">
+        <h2>PrivEsc Vectors</h2>
+        {% if privesc %}
+            <p>Status: {{ privesc.status }}</p>
+            <p>Auth Used: {{ privesc.auth_used }}</p>
 
-<div class="section">
-    <h2>PrivEsc Vectors</h2>
-    {% if privesc %}
-        <p>Status: {{ privesc.status }}<br>Auth Used: {{ privesc.auth_used }}</p>
-        <h3>Vectors Explored:</h3>
-        {% for key, result in privesc.findings.items() %}
-            <h4>{{ key | replace("_", " ") | title }}</h4>
-            <pre>{{ result.stdout if result.stdout else result.error }}</pre>
-        {% endfor %}
-    {% else %}
-        <p>Privilege Escalation Simulation was not executed.</p>
-    {% endif %}
-</div>
+            <h3>Vectors Explored:</h3>
+            {% for key, result in privesc.findings.items() %}
+                <h4>{{ key | replace("_", " ") | title }}</h4>
+                <pre>{{ result.stdout if result.stdout else result.error }}</pre>
+            {% endfor %}
+        {% else %}
+            <p>Privilege Escalation Simulation was not executed.</p>
+        {% endif %}
+    </div>
 
-<div class="section">
-    <h2>Log Correlation Results</h2>
-    {% if log_analysis %}
-        <p>Status: {{ log_analysis.status }}<br>Log File Evaluated: {{ log_analysis.log_file }}</p>
-        <p><strong>Detection Score:</strong> {{ log_analysis.detection_score }} / {{ log_analysis.total_lines_analyzed }} total lines</p>
-        <p><em>Matches against tool signatures:</em></p>
-        <ul>
-            <li>Nmap Traces: {{ log_analysis.matches.nmap | length }}</li>
-            <li>Nuclei Traces: {{ log_analysis.matches.nuclei | length }}</li>
-            <li>Polyglot Payload Traces: {{ log_analysis.matches.polyglot | length }}</li>
-        </ul>
-    {% else %}
-        <p>Blue Team Log Correlation was not executed.</p>
-    {% endif %}
-</div>
+    <div class="section">
+        <h2>Log Correlation Results</h2>
+        {% if log_analysis %}
+            <p>Status: {{ log_analysis.status }}</p>
+            <p>Log File Evaluated: {{ log_analysis.log_file }}</p>
+            <p><strong>Detection Score:</strong> {{ log_analysis.detection_score }} / {{ log_analysis.total_lines_analyzed }} total lines</p>
 
-<div class="footer">
-    <p>Report generated by DevSecOps Automated CLI Tool.</p>
-</div>
+            <h3>Matches against tool signatures:</h3>
+            <ul>
+                <li>Nmap Traces: {{ log_analysis.matches.nmap | length }}</li>
+                <li>Nuclei Traces: {{ log_analysis.matches.nuclei | length }}</li>
+                <li>Polyglot Payload Traces: {{ log_analysis.matches.polyglot | length }}</li>
+            </ul>
+        {% else %}
+            <p>Blue Team Log Correlation was not executed.</p>
+        {% endif %}
+    </div>
+
+    <div class="footer">
+        <p>Report generated by DevSecOps Automated CLI Tool.</p>
+    </div>
 
 </body>
 </html>

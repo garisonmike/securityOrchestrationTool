@@ -53,9 +53,26 @@ def get_user_configuration() -> Optional[Dict[str, Any]]:
             return None
         config['target'] = target.strip()
 
-        # Prompt for scan profile
+        # Prompt for Fingerprinting OPSEC Level
+        opsec_level = questionary.select(
+            "Select Fingerprinting OPSEC Level:",
+            choices=[
+                questionary.Choice("Stealth (Passive headers, meta tags)", "stealth"),
+                questionary.Choice("Noisy (Active probing, error triggering, loud scripts)", "noisy")
+            ]
+        ).ask()
+        
+        if opsec_level is None:
+            return None
+            
+        if opsec_level == "noisy":
+            console.print("\n[bold orange3][!] WARNING: Noisy mode will aggressively probe the target (error triggering, path brute-forcing) and will leave a significant footprint in server logs.[/bold orange3]\n")
+            
+        config['opsec_level'] = opsec_level
+
+        # Prompt for scan profile (General aggressiveness)
         profile = questionary.select(
-            "Select Scan Profile (determines aggressiveness):",
+            "Select General Scan Profile (determines aggressiveness for other tools):",
             choices=["Stealth", "Noisy"]
         ).ask()
         
@@ -104,7 +121,7 @@ def check_and_install_missing_tools(config: Dict[str, Any]) -> None:
     selected_modules = config.get("modules", [])
     
     if "Reconnaissance & Enumeration" in selected_modules:
-        required_tools.update(["nmap", "gobuster", "whatweb"])
+        required_tools.update(["nmap", "gobuster", "whatweb", "searchsploit"])
     if "Web Vulnerability Fuzzer" in selected_modules:
         required_tools.add("nuclei")
         
@@ -171,7 +188,28 @@ def main() -> None:
         session_findings["recon"] = recon_results
         
         console.print("[bold green][+] Reconnaissance complete. Findings summary:[/bold green]")
-        # Provide a stylized output of the dictionary using rich
+        
+        # Pretty print the Tech Stack
+        stack = recon_results.get("hierarchical_stack", {})
+        if stack:
+            console.print("\n[bold cyan]Target Tech Stack Discovered:[/bold cyan]")
+            for cat, items in stack.items():
+                if items:
+                    console.print(f"  [bold yellow]{cat.replace('_', ' ').title()}[/bold yellow]: [white]{', '.join(items)}[/white]")
+        
+        # Pretty print Searchsploit Results
+        sploits = recon_results.get("searchsploit_results", {})
+        if sploits:
+            console.print("\n[bold red]Searchsploit Vectors Identified:[/bold red]")
+            for query, vectors in sploits.items():
+                if isinstance(vectors, list) and len(vectors) > 0:
+                    console.print(f"  [bold magenta]Query:[/bold magenta] {query}")
+                    for v in vectors:
+                        title = v.get('Title', 'Unknown')
+                        edb = v.get('EDB_ID', 'N/A')
+                        console.print(f"    - {title} (EDB: {edb})")
+                        
+        console.print("\n[bold]Raw Findings JSON:[/bold]")
         console.print(recon_results)
 
     if "Web Vulnerability Fuzzer" in config.get("modules", []):
