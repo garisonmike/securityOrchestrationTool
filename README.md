@@ -2,7 +2,7 @@
 
 A professional, Python-based DevSecOps command-line tool designed to orchestrate security assessments, simulate vulnerability exploitation, and correlate blue team logs. 
 
-*Note: This project was originally developed as part of a Capture The Flag (CTF) challenge.*
+*This project was originally developed as part of a Capture The Flag (CTF) challenge.*
 
 ##  Disclaimer
 **This tool is strictly for educational purposes and authorized security testing.** 
@@ -22,6 +22,7 @@ Ensure the following OS-level dependencies are accessible in your `$PATH` to lev
 
 - `nmap`
 - `gobuster`
+- `whatweb`
 - `nuclei`
 - `wkhtmltopdf` *(Optional: Required for HTML to PDF conversion)*
 - `apt` (For automatic dependency bootstrapping in Debian/Ubuntu environments)

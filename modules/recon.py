@@ -6,6 +6,7 @@ import subprocess
 import requests
 import re
 import os
+import json
 from typing import Dict, Any, Optional
 
 def clean_target_for_nmap(target: str) -> str:
@@ -20,15 +21,16 @@ def format_target_for_web(target: str) -> str:
 
 def check_dependencies() -> Dict[str, bool]:
     """
-    Checks if required native tools (nmap, gobuster) are present in the system PATH.
+    Checks if required native tools (nmap, gobuster, whatweb) are present in the system PATH.
     """
     deps = {
         'nmap': shutil.which('nmap') is not None,
-        'gobuster': shutil.which('gobuster') is not None
+        'gobuster': shutil.which('gobuster') is not None,
+        'whatweb': shutil.which('whatweb') is not None
     }
     return deps
 
-def grab_headers(target: str) -> Dict[str, str]:
+def grab_headers(target: str) -> Dict[str, Any]:
     """
     Sends an HTTP GET request to verify the target is online and to grab response headers.
     """
@@ -47,6 +49,37 @@ def grab_headers(target: str) -> Dict[str, str]:
         findings["error"] = str(e)
         
     return findings
+
+def run_whatweb(target: str) -> Dict[str, Any]:
+    """
+    Executes whatweb to identify the target's tech stack and plugin versions.
+    """
+    web_target = format_target_for_web(target)
+    cmd = ['whatweb', web_target, '-q', '--log-json=-']
+
+    try:
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            check=True, 
+            timeout=60
+        )
+        try:
+            parsed = json.loads(result.stdout)
+            if isinstance(parsed, list) and len(parsed) > 0:
+                plugins = parsed[0].get("plugins", {})
+                return {"status": "success", "tech_stack": plugins}
+            return {"status": "error", "error_msg": "No plugins found by Whatweb"}
+        except json.JSONDecodeError:
+            return {"status": "error", "error_msg": "Failed to parse whatweb JSON", "raw_output": result.stdout}
+    except subprocess.CalledProcessError as e:
+        # WhatWeb returns non-zero on some errors/warnings, capture output anyway
+        return {"status": "error", "error_msg": f"Whatweb failed ({e.returncode})", "raw_output": e.stdout + e.stderr}
+    except subprocess.TimeoutExpired:
+        return {"status": "error", "error_msg": "Whatweb scan timed out."}
+    except Exception as e:
+        return {"status": "error", "error_msg": f"Unexpected error: {e}"}
 
 def run_nmap(target: str, profile: str) -> Dict[str, Any]:
     """
@@ -102,7 +135,6 @@ def run_gobuster(target: str, wordlist: str = "/usr/share/wordlists/dirb/common.
         # Parse gobuster output into a list of discovered urls (rudimentary parsing)
         lines = result.stdout.split('\n')
         discovered = [line.strip() for line in lines if line.strip() and ("Status: 2" in line or "Status: 3" in line)]
-        
         return {"status": "success", "raw_output": result.stdout, "discovered_paths": discovered}
     except subprocess.CalledProcessError as e:
         # Gobuster returning non-zero usually means it successfully ran but finished with errors or didn't find anything
@@ -126,6 +158,7 @@ def run_recon(config: Dict[str, Any]) -> Dict[str, Any]:
         "profile": profile,
         "dependencies": {},
         "web_headers": {},
+        "tech_stack": {},
         "nmap_scan": {},
         "gobuster_scan": {}
     }
@@ -141,16 +174,22 @@ def run_recon(config: Dict[str, Any]) -> Dict[str, Any]:
         findings["error"] = "Target appears to be offline or unreachable via HTTP. Aborting further recon."
         return findings
 
-    # 3. Nmap Scan
+    # 3. Web Tech Stack Fingerprinting (WhatWeb)
+    if deps.get('whatweb'):
+        findings["tech_stack"] = run_whatweb(target)
+    else:
+        findings["tech_stack"] = {"status": "skipped", "error_msg": "Whatweb is not installed or not in PATH."}
+
+    # 4. Nmap Scan
     if deps.get('nmap'):
         findings["nmap_scan"] = run_nmap(target, profile)
     else:
         findings["nmap_scan"] = {"status": "skipped", "error_msg": "Nmap is not installed or not in PATH."}
-        
-    # 4. Gobuster Scan
+
+    # 5. Gobuster Scan
     if deps.get('gobuster'):
         findings["gobuster_scan"] = run_gobuster(target)
     else:
         findings["gobuster_scan"] = {"status": "skipped", "error_msg": "Gobuster is not installed or not in PATH."}
-        
+
     return findings

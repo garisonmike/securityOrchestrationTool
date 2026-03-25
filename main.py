@@ -104,7 +104,7 @@ def check_and_install_missing_tools(config: Dict[str, Any]) -> None:
     selected_modules = config.get("modules", [])
     
     if "Reconnaissance & Enumeration" in selected_modules:
-        required_tools.update(["nmap", "gobuster"])
+        required_tools.update(["nmap", "gobuster", "whatweb"])
     if "Web Vulnerability Fuzzer" in selected_modules:
         required_tools.add("nuclei")
         
