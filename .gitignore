@@ -237,6 +237,6 @@ reports/
 
 
 # Agile Trackers
-issues.md
-issuesReport.md
+# issues.md
+# issuesReport.md
 create_issues.py
