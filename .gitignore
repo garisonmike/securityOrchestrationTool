@@ -240,3 +240,4 @@ reports/
 # issues.md
 # issuesReport.md
 create_issues.py
+issues.sh
