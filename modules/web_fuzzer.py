@@ -91,12 +91,78 @@ requests:
         tf.write(fallback_template)
         return tf.name
 
-def run_nuclei(target: str, auto_update: bool = True) -> Dict[str, Any]:
+def _select_nuclei_tags(tech_stack: Dict[str, List[str]], profile: str) -> List[str]:
     """
-    Executes Nuclei against the target URL using specific tags 
-    for fast execution and JSONL output for easy parsing.
+    Issue #21: Auto-select Nuclei template tags based on detected tech stack.
+    Returns a list of tags to pass to nuclei -tags flag.
+    """
+    tags = set()
+    
+    # Default tags for all scans
+    tags.add("exposure")
+    tags.add("misconfig")
+    
+    # Parse tech stack from recon results
+    all_components = []
+    for category, items in tech_stack.items():
+        if isinstance(items, list):
+            all_components.extend([item.lower() for item in items])
+    
+    tech_string = ' '.join(all_components)
+    
+    # Apache-specific tags
+    if 'apache' in tech_string:
+        tags.update(['apache', 'httpd'])
+    
+    # PHP-specific tags
+    if 'php' in tech_string:
+        tags.update(['php', 'sqli', 'xss', 'rce'])
+    
+    # Nginx-specific
+    if 'nginx' in tech_string:
+        tags.add('nginx')
+    
+    # Database-specific
+    if any(db in tech_string for db in ['mysql', 'mariadb', 'postgres', 'mongodb']):
+        tags.update(['sqli', 'db'])
+    
+    # WordPress, Joomla, Drupal
+    if 'wordpress' in tech_string or 'wp-' in tech_string:
+        tags.update(['wordpress', 'wp-plugin'])
+    if 'joomla' in tech_string:
+        tags.add('joomla')
+    if 'drupal' in tech_string:
+        tags.add('drupal')
+    
+    # JavaScript frameworks
+    if any(js in tech_string for js in ['react', 'vue', 'angular', 'next']):
+        tags.update(['js', 'xss'])
+    
+    # Default to generic web tags if nothing specific detected
+    if len(tags) == 2:  # Only has exposure + misconfig
+        tags.update(['generic', 'cve'])
+    
+    return list(tags)
+
+
+def run_nuclei(target: str, config: Dict[str, Any], auto_update: bool = True) -> Dict[str, Any]:
+    """
+    Executes Nuclei against the target URL using tech-stack-aware template selection
+    and JSONL output for easy parsing. (Issue #21)
     """
     web_target = format_target_for_web(target)
+    profile = config.get('profile', 'Stealth').lower()
+    cookie = config.get('cookie', None)
+    
+    # Issue #21: Get tech stack from recon results if available
+    tech_stack = {}
+    if 'hierarchical_stack' in config:
+        tech_stack = config['hierarchical_stack']
+    
+    # Select appropriate tags
+    selected_tags = _select_nuclei_tags(tech_stack, profile)
+    tags_str = ','.join(selected_tags)
+    
     templates_path = _find_nuclei_templates_path()
     fallback_template_file = ""
     
@@ -105,8 +171,19 @@ def run_nuclei(target: str, auto_update: bool = True) -> Dict[str, Any]:
         'nuclei', 
         '-u', web_target, 
         '-jsonl', 
-        '-silent'
+        '-silent',
+        '-tags', tags_str
     ]
+    
+    # Issue #21: Add severity filter for Noisy mode
+    if profile == 'noisy':
+        cmd.extend(['-severity', 'critical,high,medium'])
+    else:
+        cmd.extend(['-severity', 'critical,high'])
+    
+    # Add cookie if provided
+    if cookie:
+        cmd.extend(['-H', f'Cookie: {cookie}'])
     
     if templates_path:
         cmd.extend(['-t', templates_path])
@@ -145,8 +222,18 @@ def run_nuclei(target: str, auto_update: bool = True) -> Dict[str, Any]:
                     parsed_findings.append(json.loads(line))
                 except json.JSONDecodeError:
                     pass
-                    
-        return {"status": "success", "findings": parsed_findings}
+        
+        # Issue #21: Log template selection metadata
+        return {
+            "status": "success", 
+            "findings": parsed_findings,
+            "meta": {
+                "tags_used": selected_tags,
+                "tags_string": tags_str,
+                "templates_matched": len(parsed_findings),
+                "severity_filter": "critical,high,medium" if profile == 'noisy' else "critical,high"
+            }
+        }
         
     except subprocess.CalledProcessError as e:
         error_output = str(e.stdout) + str(e.stderr)
@@ -242,9 +329,14 @@ def custom_fuzzer(target: str, cookie: str = None) -> Dict[str, Any]:
 
     return findings
 
+def _validate_cookie_format(cookie: str) -> bool:
+    """Validate basic structure of a cookie string."""
+    return bool(re.match(r'^([a-zA-Z0-9_]+=[^;]+)(;[ ]?[a-zA-Z0-9_]+=[^;]+)*$', cookie))
+
 def run_fuzzer(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Main entry point for the Web Vulnerability Fuzzer module.
+    Issue #21: Now passes config to run_nuclei for tech-stack-aware template selection.
     """
     target = config.get('target', '')
     cookie = config.get('cookie', None)  # Optional cookie for authenticated scanning
@@ -256,11 +348,28 @@ def run_fuzzer(config: Dict[str, Any]) -> Dict[str, Any]:
         "custom_fuzzer": {}
     }
     
+    # Validate session cookie if provided
+    if cookie and not _validate_cookie_format(cookie):
+        results["errors"] = results.get("errors", [])
+        results["errors"].append("Invalid cookie format detected. Cookie injection skipped.")
+        cookie = None
+        config['cookie'] = None
+    
     deps = check_dependencies()
     results["dependencies"] = deps
     
     if deps.get('nuclei'):
-        results["nuclei_scan"] = run_nuclei(target)
+        # Issue #21: Pass config to enable tech-stack-aware template selection
+        results["nuclei_scan"] = run_nuclei(target, config)
+        
+        # Issue #21: Surface warning if 0 templates matched
+        nuclei_meta = results["nuclei_scan"].get("meta", {})
+        if nuclei_meta.get("templates_matched", 0) == 0:
+            results["nuclei_scan"]["warning"] = (
+                f"⚠ Nuclei returned 0 findings. "
+                f"Tags used: {nuclei_meta.get('tags_string', 'none')}. "
+                f"This may indicate templates are unavailable or target has no matching vulnerabilities."
+            )
     else:
         results["nuclei_scan"] = {"status": "skipped", "error_msg": "Nuclei is not installed or not in PATH."}
         
