@@ -251,17 +251,35 @@ def main() -> None:
                 if items:
                     console.print(f"  [bold yellow]{cat.replace('_', ' ').title()}[/bold yellow]: [white]{', '.join(items)}[/white]")
         
-        # Pretty print Searchsploit Results
+        # Issue #28: Enhanced Searchsploit Results with filtering info
         sploits = recon_results.get("searchsploit_results", {})
         if sploits:
-            console.print("\n[bold red]Searchsploit Vectors Identified:[/bold red]")
+            console.print("\n[bold red]Searchsploit Vectors (Filtered for Relevance):[/bold red]")
+            total_shown = 0
             for query, vectors in sploits.items():
                 if isinstance(vectors, list) and len(vectors) > 0:
                     console.print(f"  [bold magenta]Query:[/bold magenta] {query}")
                     for v in vectors:
                         title = v.get('Title', 'Unknown')
                         edb = v.get('EDB_ID', 'N/A')
-                        console.print(f"    - {title} (EDB: {edb})")
+                        date_pub = v.get('Date_Published', 'Unknown')
+                        verified = v.get('Verified', '0') == '1'
+                        version_mismatch = v.get('_version_mismatch', False)
+                        
+                        # Format with status indicators
+                        status_indicators = []
+                        if verified:
+                            status_indicators.append("[green]✓[/green]")
+                        if version_mismatch:
+                            status_indicators.append("[yellow]⚠[/yellow]")
+                        
+                        status_str = " ".join(status_indicators)
+                        console.print(f"    - {title} (EDB: {edb}, {date_pub}) {status_str}")
+                        total_shown += 1
+            
+            if total_shown > 0:
+                console.print(f"  [cyan]Note: Showing {total_shown} relevant exploits (filtered: last 5 years, deduplicated by CVE)[/cyan]")
+                console.print(f"  [cyan]Legend: [green]✓[/green] = Verified, [yellow]⚠[/yellow] = Potential version mismatch[/cyan]")
         
         # Issue #29: Remove raw dict printing - already pretty-printed above
         # Nmap summary

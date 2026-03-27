@@ -32,17 +32,104 @@ def check_dependencies() -> Dict[str, bool]:
     return deps
 
 def run_searchsploit(query: str) -> List[Dict[str, Any]]:
-    """Runs searchsploit for a given tech stack query and returns JSON results."""
+    """
+    Runs searchsploit for a given tech stack query and returns filtered, relevant results.
+    Issue #28: Filter by recency, verification status, and relevance.
+    """
     if not shutil.which('searchsploit'):
         return []
     try:
         result = subprocess.run(['searchsploit', query, '--json'], capture_output=True, text=True, timeout=30)
         if result.returncode == 0:
             parsed = json.loads(result.stdout)
-            return parsed.get("RESULTS_EXPLOIT", [])[:5]  # Return top 5 results to avoid clutter
+            raw_results = parsed.get("RESULTS_EXPLOIT", [])
+            
+            # Issue #28: Apply filtering
+            filtered_results = _filter_searchsploit_results(raw_results, query)
+            return filtered_results[:5]  # Return top 5 filtered results
     except Exception as e:
         pass
     return []
+
+
+def _filter_searchsploit_results(results: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
+    """
+    Issue #28: Filter searchsploit results for relevance and recency.
+    
+    Filters applied:
+    1. Recency: Only show exploits from last 5 years (configurable)
+    2. Verification: Prefer verified exploits
+    3. Relevance: Flag version mismatches
+    4. Deduplication: Remove duplicate CVE entries
+    """
+    from datetime import datetime, timedelta
+    
+    # 5 years back from current date
+    cutoff_date = datetime.now() - timedelta(days=365 * 5)
+    
+    filtered = []
+    seen_cves = set()
+    
+    for result in results:
+        # Extract date from result
+        date_str = result.get("Date_Published", "")
+        if date_str:
+            try:
+                # Handle various date formats searchsploit might return
+                if len(date_str) == 10 and '-' in date_str:  # YYYY-MM-DD
+                    exploit_date = datetime.strptime(date_str, "%Y-%m-%d")
+                elif len(date_str) == 8:  # YYYYMMDD
+                    exploit_date = datetime.strptime(date_str, "%Y%m%d")
+                else:
+                    # Unknown format, skip date filtering for this entry
+                    exploit_date = cutoff_date + timedelta(days=1)
+            except ValueError:
+                # Invalid date, skip date filtering for this entry
+                exploit_date = cutoff_date + timedelta(days=1)
+            
+            # Filter by recency (last 5 years)
+            if exploit_date < cutoff_date:
+                continue
+        
+        # Deduplication by CVE (prefer first occurrence)
+        title = result.get("Title", "")
+        cve_match = re.search(r'CVE-\d{4}-\d+', title, re.IGNORECASE)
+        if cve_match:
+            cve_id = cve_match.group(0).upper()
+            if cve_id in seen_cves:
+                continue
+            seen_cves.add(cve_id)
+        
+        # Prefer verified exploits
+        verified = result.get("Verified", "0") == "1"
+        if verified:
+            result["_priority"] = 1
+        else:
+            result["_priority"] = 2
+            
+        # Flag potential version mismatches
+        # If query contains version numbers, check if exploit targets similar version
+        query_lower = query.lower()
+        title_lower = title.lower()
+        if re.search(r'\d+\.\d+', query_lower):
+            query_version = re.findall(r'\d+\.\d+', query_lower)
+            title_version = re.findall(r'\d+\.\d+', title_lower)
+            if query_version and title_version:
+                # Simple version similarity check
+                if not any(qv in title_version for qv in query_version):
+                    result["_version_mismatch"] = True
+        
+        filtered.append(result)
+    
+    # Sort by priority (verified first), then by date (newest first)
+    filtered.sort(key=lambda x: (
+        x.get("_priority", 2),
+        -(datetime.strptime(x.get("Date_Published", "1970-01-01"), "%Y-%m-%d").timestamp() 
+          if x.get("Date_Published") and len(x.get("Date_Published", "")) == 10 
+          else 0)
+    ))
+    
+    return filtered
 
 def stealth_fingerprint(target: str) -> Dict[str, Any]:
     """
