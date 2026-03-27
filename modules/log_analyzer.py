@@ -3,7 +3,114 @@ Blue Team Log Correlation Engine
 """
 import os
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+
+def analyze_logs_from_ssh(ssh_session, target_hostname: str, log_paths: List[str] = None) -> Dict[str, Any]:
+    """
+    Issue #27, #25, #26, #34: Fetch and analyze logs from a remote host via SSH.
+    
+    Args:
+        ssh_session: Active paramiko.SSHClient connection
+        target_hostname: Target hostname (for reporting)
+        log_paths: List of log file paths to fetch. Defaults to common locations.
+    
+    Returns:
+        Dict containing analysis results from all fetched logs
+    """
+    if log_paths is None:
+        log_paths = [
+            "/var/log/apache2/access.log",
+            "/var/log/apache2/error.log",
+            "/var/log/auth.log",
+            "/var/log/syslog"
+        ]
+    
+    combined_results: Dict[str, Any] = {
+        "status": "pending",
+        "target": target_hostname,
+        "logs_analyzed": [],
+        "total_lines_analyzed": 0,
+        "detection_score": 0,
+        "matches": {
+            "nmap": [],
+            "nuclei": [],
+            "polyglot": []
+        },
+        "errors": []
+    }
+    
+    # Signatures to hunt for in the logs
+    signatures = {
+        "nmap": re.compile(r'(?i)nmap\b'),
+        "nuclei": re.compile(r'(?i)nuclei'),
+        "polyglot": re.compile(r'(?i)(SLEEP\(\d+\)|<script>|<svg/onload|NCI_HACKATHON|UNION\s+SELECT|OR\s+1=1|/etc/passwd)')
+    }
+    
+    for remote_path in log_paths:
+        try:
+            # Execute remote cat command and capture output
+            _, stdout, stderr = ssh_session.exec_command(f"cat {remote_path}", timeout=30)
+            lines = stdout.readlines()
+            error_output = stderr.read().decode('utf-8', errors='replace').strip()
+            
+            if error_output and ("No such file" in error_output or "Permission denied" in error_output):
+                combined_results["errors"].append(f"{remote_path}: {error_output}")
+                continue
+            
+            if not lines:
+                combined_results["errors"].append(f"{remote_path}: File is empty or unreadable")
+                continue
+            
+            # Analyze this log file
+            log_matches = 0
+            for line_num, line in enumerate(lines, start=1):
+                combined_results["total_lines_analyzed"] += 1
+                line = line.strip()
+
+                if signatures["nmap"].search(line):
+                    combined_results["matches"]["nmap"].append({
+                        "file": remote_path,
+                        "line": line_num,
+                        "content": line
+                    })
+                    combined_results["detection_score"] += 1
+                    log_matches += 1
+                
+                if signatures["nuclei"].search(line):
+                    combined_results["matches"]["nuclei"].append({
+                        "file": remote_path,
+                        "line": line_num,
+                        "content": line
+                    })
+                    combined_results["detection_score"] += 1
+                    log_matches += 1
+                
+                if signatures["polyglot"].search(line):
+                    combined_results["matches"]["polyglot"].append({
+                        "file": remote_path,
+                        "line": line_num,
+                        "content": line
+                    })
+                    combined_results["detection_score"] += 1
+                    log_matches += 1
+            
+            combined_results["logs_analyzed"].append({
+                "path": remote_path,
+                "lines": len(lines),
+                "matches": log_matches
+            })
+            
+        except Exception as e:
+            combined_results["errors"].append(f"{remote_path}: {type(e).__name__}: {str(e)}")
+    
+    if combined_results["logs_analyzed"]:
+        combined_results["status"] = "completed"
+    else:
+        combined_results["status"] = "error"
+        combined_results["errors"].append("No logs could be analyzed")
+    
+    return combined_results
+
 
 def analyze_logs(log_path: str) -> Dict[str, Any]:
     """

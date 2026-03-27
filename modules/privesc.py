@@ -224,10 +224,15 @@ def try_default_ssh_credentials(hostname: str, port: int = 22) -> Dict[str, Any]
     }
 
 
-def run_privesc(config: Dict[str, Any], ssh_creds: Dict[str, str]) -> Dict[str, Any]:
+def run_privesc(config: Dict[str, Any], ssh_creds: Dict[str, str]) -> Tuple[Dict[str, Any], Any]:
     """
     Main entry point for the Privilege Escalation Simulator.
     Establishes an SSH connection and runs automated enumeration vectors.
+    
+    Issue #27: Returns both results dict AND the SSH session object for downstream modules.
+    
+    Returns:
+        (results: Dict[str, Any], ssh_session: paramiko.SSHClient or None)
     """
     target_url = config.get('target', '')
     parsed = urlparse(target_url if '://' in target_url else f'http://{target_url}')
@@ -270,29 +275,37 @@ def run_privesc(config: Dict[str, Any], ssh_creds: Dict[str, str]) -> Dict[str, 
         for key, cmd in enum_commands.items():
             run_result = execute_remote_command(ssh, cmd)
             results["findings"][key] = run_result
+        
+        # Issue #27: Return the OPEN SSH session for downstream modules
+        return (results, ssh)
 
     except paramiko.AuthenticationException:
         # Issue #32: Clean error message
         results["status"] = "error"
         results["error_msg"] = "Authentication failed. Invalid username or password."
+        ssh.close()
+        return (results, None)
     except SSHException as e:
         # Issue #32: Clean SSH error message
         results["status"] = "error"
         results["error_msg"] = f"[!] SSH error: {str(e)} — connection failed."
+        ssh.close()
+        return (results, None)
     except EOFError:
         # Issue #32: SSH service not available
         results["status"] = "error"
         results["error_msg"] = "[!] SSH port closed or not an SSH service."
+        ssh.close()
+        return (results, None)
     except socket.error as e:
         # Issue #32: Network errors
         results["status"] = "error"
         results["error_msg"] = f"[!] Network error: {str(e)}"
+        ssh.close()
+        return (results, None)
     except Exception as e:
         # Issue #32: Catch-all with clean error (no traceback to user)
         results["status"] = "error"
         results["error_msg"] = f"[!] Unexpected error: {type(e).__name__}: {str(e)}"
-    finally:
-        # Always ensure the connection is closed
         ssh.close()
-
-    return results
+        return (results, None)

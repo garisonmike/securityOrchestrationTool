@@ -299,7 +299,9 @@ def main() -> None:
     # Issue #13: Make SSH credentials prompt optional
     # Issue #17: Conditional module execution - track SSH session success
     # Issue #14 & #22: Rate-limit-aware default credential brute-force
+    # Issue #27: Track SSH session object for downstream modules
     ssh_session_established = False
+    ssh_session_object = None
     
     if "Privilege Escalation Simulator" in config.get("modules", []):
         from modules.privesc import run_privesc, detect_ssh_rate_limiting, try_default_ssh_credentials
@@ -372,7 +374,8 @@ def main() -> None:
         # Execute privesc if we have credentials
         if ssh_creds:
             with console.status("[bold blue]Connecting via SSH and simulating privesc vectors...[/bold blue]"):
-                privesc_results = run_privesc(config, ssh_creds)
+                # Issue #27: Receive both results AND the SSH session object
+                privesc_results, ssh_session_object = run_privesc(config, ssh_creds)
             session_findings["privesc"] = privesc_results
             
             # Issue #17: Track whether SSH actually succeeded
@@ -384,11 +387,12 @@ def main() -> None:
 
     # Issue #16: Skip Log Correlation entirely if no SSH session was established
     # Issue #17: Conditional module execution based on SSH success
+    # Issue #27: Pass SSH session object to log analyzer
     if "Blue Team Log Correlation Engine" in config.get("modules", []):
-        from modules.log_analyzer import analyze_logs
+        from modules.log_analyzer import analyze_logs, analyze_logs_from_ssh
         console.print("\n[bold magenta][*] Launching Blue Team Log Correlation Engine...[/bold magenta]")
         
-        if not ssh_session_established:
+        if not ssh_session_established or ssh_session_object is None:
             console.print("[bold yellow][!] Log Correlation skipped: No SSH session was established.[/bold yellow]")
             console.print("[yellow]Note: Log correlation requires an active SSH connection from the PrivEsc module.[/yellow]")
             session_findings["log_analysis"] = {
@@ -397,23 +401,32 @@ def main() -> None:
                 "note": "Log Correlation skipped: no shell access obtained"
             }
         else:
-            log_file = questionary.path("Enter path to the log file to analyze (e.g., /var/log/apache2/access.log):").ask()
+            # Issue #27, #25, #26, #34: Use SSH session to fetch remote logs
+            console.print("[bold cyan][*] Fetching logs from remote target via SSH...[/bold cyan]")
+            target_url = config.get('target', '')
+            from urllib.parse import urlparse
+            parsed = urlparse(target_url if '://' in target_url else f'http://{target_url}')
+            target_hostname = parsed.hostname or target_url.split(':')[0]
             
-            if log_file:
-                with console.status(f"[bold blue]Analyzing {log_file} for tool signatures...[/bold blue]"):
-                    log_results = analyze_logs(log_file)
-                session_findings["log_analysis"] = log_results
-                
-                if log_results.get("status") == "error":
-                    for err in log_results.get("errors", []):
-                        console.print(f"[bold red][!] {err}[/bold red]")
-                else:
-                    score = log_results.get("detection_score", 0)
-                    console.print(f"[bold green][+] Log Analysis complete. Detection Score: {score}[/bold green]")
-                    console.print(log_results)
+            with console.status(f"[bold blue]Analyzing remote logs on {target_hostname} for tool signatures...[/bold blue]"):
+                log_results = analyze_logs_from_ssh(ssh_session_object, target_hostname)
+            session_findings["log_analysis"] = log_results
+            
+            if log_results.get("status") == "error":
+                for err in log_results.get("errors", []):
+                    console.print(f"[bold yellow][!] {err}[/bold yellow]")
             else:
-                console.print("[bold yellow][!] Log Correlation skipped: No file provided.[/bold yellow]")
-                session_findings["log_analysis"] = {"status": "skipped", "reason": "No file path provided"}
+                score = log_results.get("detection_score", 0)
+                logs_analyzed = log_results.get("logs_analyzed", [])
+                console.print(f"[bold green][+] Log Analysis complete. Detection Score: {score}[/bold green]")
+                console.print(f"[cyan]Logs analyzed: {len(logs_analyzed)} files, {log_results.get('total_lines_analyzed', 0)} lines total[/cyan]")
+            
+            # Clean up SSH session after log analysis
+            try:
+                ssh_session_object.close()
+                console.print("[cyan][*] SSH session closed.[/cyan]")
+            except Exception:
+                pass
 
     # ==========================
     # Final Stage: Generate IR Report
