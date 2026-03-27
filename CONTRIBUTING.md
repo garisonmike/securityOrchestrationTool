@@ -130,27 +130,27 @@ Before contributing, ensure you have:
 
 We welcome various types of contributions:
 
-#### 🐛 Bug Fixes
+#### Bug Fixes
 - Fix existing functionality issues
 - Resolve security vulnerabilities
 - Improve error handling and edge cases
 
-#### ✨ New Features
+#### New Features
 - Add new security testing modules
 - Enhance existing functionality
 - Implement new reporting capabilities
 
-#### 📚 Documentation
+#### Documentation
 - Improve README and guides
 - Add code comments and docstrings
 - Create tutorials and examples
 
-#### 🧪 Testing
+#### Testing
 - Write unit and integration tests
 - Develop test environments and scenarios
 - Improve test coverage
 
-#### 🔧 Infrastructure
+#### Infrastructure
 - CI/CD pipeline improvements
 - Build and packaging enhancements
 - Development tooling

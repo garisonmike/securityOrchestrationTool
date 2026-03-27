@@ -8,9 +8,9 @@ A comprehensive, Python-based DevSecOps command-line tool designed to orchestrat
 
 ---
 
-## 🚨 **CRITICAL LEGAL DISCLAIMER**
+## **CRITICAL LEGAL DISCLAIMER**
 
-**⚠️ READ THIS BEFORE USING THE SOFTWARE ⚠️**
+**READ THIS BEFORE USING THE SOFTWARE**
 
 **THIS SOFTWARE IS INTENDED EXCLUSIVELY FOR:**
 - Educational and research purposes
@@ -36,14 +36,14 @@ The developers of this tool are not responsible for any misuse or damage caused 
 
 ## Features
 
-### 🔍 **Reconnaissance & Enumeration**
+### **Reconnaissance & Enumeration**
 - Automated `nmap` port scanning with customizable profiles (stealthy/aggressive)
 - Directory and file discovery using `gobuster`
 - Web technology fingerprinting with `whatweb`
 - HTTP header analysis and service detection
 - Intelligent target identification and attack surface mapping
 
-### 🛡️ **Web Vulnerability Assessment**
+### **Web Vulnerability Assessment**
 - Integration with `nuclei` for comprehensive vulnerability scanning
 - Custom polyglot fuzzer for parameter injection testing
 - Detection capabilities for:
@@ -53,21 +53,21 @@ The developers of this tool are not responsible for any misuse or damage caused 
   - Path traversal vulnerabilities
   - Configuration misconfigurations
 
-### 🔐 **Privilege Escalation Simulation**
+### **Privilege Escalation Simulation**
 - Secure SSH-based post-exploitation testing via `paramiko`
 - SUID binary enumeration and analysis
 - PATH manipulation vulnerability detection
 - Sudo privilege escalation pathway identification
 - Safe testing methodology to prevent system instability
 
-### 📊 **Blue Team Log Correlation**
+### **Blue Team Log Correlation**
 - Real-time detection score calculation
 - Log analysis for tool artifacts and IOCs (Indicators of Compromise)
 - Correlation of offensive activities with defensive telemetry
 - SOC team validation capabilities
 - Custom log parsing and pattern matching
 
-### 📄 **Comprehensive Reporting**
+### **Comprehensive Reporting**
 - Dynamic report generation using `Jinja2` templates
 - Multiple output formats: Markdown, HTML, and PDF
 - Professional presentation-ready documentation
@@ -404,6 +404,6 @@ of this software and associated documentation files...
 
 ---
 
-**Made with ❤️ by the security community, for the security community.**
+**Made with care by the security community, for the security community.**
 
 **Remember: Use responsibly, test ethically, secure the world.**
