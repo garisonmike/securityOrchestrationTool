@@ -93,7 +93,7 @@ requests:
 
 def _select_nuclei_tags(tech_stack: Dict[str, List[str]], profile: str) -> List[str]:
     """
-    Issue #21: Auto-select Nuclei template tags based on detected tech stack.
+    Issue #35 & #31: Auto-select Nuclei template tags based on detected tech stack.
     Returns a list of tags to pass to nuclei -tags flag.
     """
     tags = set()
@@ -110,9 +110,14 @@ def _select_nuclei_tags(tech_stack: Dict[str, List[str]], profile: str) -> List[
     
     tech_string = ' '.join(all_components)
     
+    # Issue #35 fix: Log what we received for debugging
+    if not tech_string.strip():
+        # Empty tech stack - return default tags
+        return ["exposure", "misconfig", "cve"]
+    
     # Apache-specific tags
     if 'apache' in tech_string:
-        tags.update(['apache', 'httpd'])
+        tags.update(['apache', 'httpd', 'cve'])
     
     # PHP-specific tags
     if 'php' in tech_string:
@@ -140,7 +145,7 @@ def _select_nuclei_tags(tech_stack: Dict[str, List[str]], profile: str) -> List[
     
     # Default to generic web tags if nothing specific detected
     if len(tags) == 2:  # Only has exposure + misconfig
-        tags.update(['generic', 'cve'])
+        tags.update(['cve', 'generic'])
     
     return list(tags)
 
@@ -148,19 +153,26 @@ def _select_nuclei_tags(tech_stack: Dict[str, List[str]], profile: str) -> List[
 def run_nuclei(target: str, config: Dict[str, Any], auto_update: bool = True) -> Dict[str, Any]:
     """
     Executes Nuclei against the target URL using tech-stack-aware template selection
-    and JSONL output for easy parsing. (Issue #21)
+    and JSONL output for easy parsing. (Issue #35 & #31)
     """
     web_target = format_target_for_web(target)
     profile = config.get('profile', 'Stealth').lower()
     cookie = config.get('cookie', None)
     
-    # Issue #21: Get tech stack from recon results if available
-    tech_stack = {}
-    if 'hierarchical_stack' in config:
-        tech_stack = config['hierarchical_stack']
+    # Issue #35 & #31 fix: Get tech stack from recon results if available
+    tech_stack = config.get('hierarchical_stack', {})
+    
+    # Issue #35 fix: If hierarchical_stack is empty, try alternative keys
+    if not tech_stack or not any(tech_stack.values()):
+        tech_stack = config.get('tech_stack', {})
     
     # Select appropriate tags
     selected_tags = _select_nuclei_tags(tech_stack, profile)
+    
+    # Issue #35 fix: Ensure we always have tags (defensive)
+    if not selected_tags:
+        selected_tags = ['exposure', 'misconfig', 'cve']
+    
     tags_str = ','.join(selected_tags)
     
     templates_path = _find_nuclei_templates_path()
@@ -171,11 +183,14 @@ def run_nuclei(target: str, config: Dict[str, Any], auto_update: bool = True) ->
         'nuclei', 
         '-u', web_target, 
         '-jsonl', 
-        '-silent',
-        '-tags', tags_str
+        '-silent'
     ]
     
-    # Issue #21: Add severity filter for Noisy mode
+    # Issue #35 fix: Only add -tags if we have non-empty tags
+    if tags_str:
+        cmd.extend(['-tags', tags_str])
+    
+    # Issue #35: Add severity filter for Noisy mode
     if profile == 'noisy':
         cmd.extend(['-severity', 'critical,high,medium'])
     else:
@@ -223,15 +238,17 @@ def run_nuclei(target: str, config: Dict[str, Any], auto_update: bool = True) ->
                 except json.JSONDecodeError:
                     pass
         
-        # Issue #21: Log template selection metadata
+        # Issue #35 & #31: Log template selection metadata with debug info
         return {
             "status": "success", 
             "findings": parsed_findings,
             "meta": {
                 "tags_used": selected_tags,
-                "tags_string": tags_str,
+                "tags_string": tags_str if tags_str else "none",
                 "templates_matched": len(parsed_findings),
-                "severity_filter": "critical,high,medium" if profile == 'noisy' else "critical,high"
+                "severity_filter": "critical,high,medium" if profile == 'noisy' else "critical,high",
+                "tech_stack_received": bool(tech_stack and any(tech_stack.values())),
+                "tech_stack_keys": list(tech_stack.keys()) if tech_stack else []
             }
         }
         
