@@ -41,7 +41,7 @@ We are committed to providing a welcoming and inclusive environment for all cont
 
 ### Enforcement
 
-Code of conduct violations should be reported to [conduct@yourproject.com]. All reports will be investigated promptly and confidentially.
+Code of conduct violations should be reported by creating a private issue or contacting repository maintainers directly through GitHub. All reports will be investigated promptly and confidentially.
 
 ## Getting Started
 
@@ -479,7 +479,7 @@ def verify_authorization(target: str) -> bool:
 
 If you discover security vulnerabilities:
 
-1. **Private disclosure first** - Email security@yourproject.com
+1. **Create a private security advisory** - Use GitHub's security advisory feature
 2. **Provide detailed information** - Include steps to reproduce
 3. **Allow time for fixes** - Give 90 days before public disclosure
 4. **Follow coordinated disclosure** - Work with maintainers on timeline
@@ -608,7 +608,7 @@ How does this impact security?
 **DO NOT** create public issues for security vulnerabilities.
 
 Instead:
-1. Email security@yourproject.com
+1. Use GitHub's security advisory feature
 2. Include detailed vulnerability information
 3. Provide proof of concept if safe
 4. Suggest remediation approaches
@@ -698,8 +698,8 @@ Each release includes:
 
 - **GitHub Issues**: Bug reports and feature requests
 - **GitHub Discussions**: Questions and community interaction
-- **Email**: security@yourproject.com for security issues
-- **Discord/Slack**: Real-time community chat (if available)
+- **GitHub Security Advisories**: Private security vulnerability reports
+- **Pull Request Reviews**: Code collaboration and technical discussions
 
 ### Recognition
 

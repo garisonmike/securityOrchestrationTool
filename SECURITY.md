@@ -15,18 +15,20 @@ The Automated Security Orchestration Engine team takes security vulnerabilities 
 
 ### Private Disclosure Process
 
-**DO NOT** create a public GitHub issue for security vulnerabilities.
+**DO NOT** create public GitHub issues for security vulnerabilities.
 
 Instead, please follow these steps:
 
-1. **Email us privately** at `security@yourproject.com` with:
+1. **Use GitHub Security Advisories** - Navigate to the "Security" tab of this repository and click "Report a vulnerability"
+
+2. **Provide comprehensive details**:
    - A description of the vulnerability
    - Steps to reproduce the issue
    - Potential impact assessment
    - Suggested remediation (if available)
-   - Your contact information for follow-up
+   - Your GitHub username for follow-up
 
-2. **Allow time for investigation** - We will:
+3. **Allow time for investigation** - We will:
    - Acknowledge receipt within 48 hours
    - Provide an initial assessment within 5 business days
    - Work with you to understand and validate the issue
@@ -34,7 +36,7 @@ Instead, please follow these steps:
    - Coordinate disclosure timeline
 
 3. **Coordinated disclosure** - We follow a 90-day disclosure timeline:
-   - **Day 0**: Vulnerability reported privately
+   - **Day 0**: Vulnerability reported via GitHub Security Advisory
    - **Days 1-5**: Initial triage and validation
    - **Days 6-30**: Develop and test fix
    - **Days 31-60**: Release patched version
@@ -135,7 +137,6 @@ Security updates are distributed through:
 
 - **GitHub Releases** - Tagged versions with security fixes
 - **Security Advisories** - GitHub security advisory system
-- **Mailing List** - Security-focused announcements (if available)
 - **Package Managers** - Updated packages through pip/PyPI
 
 ### Recognition
@@ -143,16 +144,16 @@ Security updates are distributed through:
 We believe in recognizing security researchers who help make our project safer. Contributors who report valid security vulnerabilities will be:
 
 - **Publicly credited** in release notes (unless anonymity is requested)
-- **Listed in our security hall of fame** (if we establish one)
-- **Invited to provide feedback** on our security practices
+- **Acknowledged in the repository** contributors section
+- **Invited to provide feedback** on security practices
 - **Given priority support** for future security reports
 
 ### Security Contact
 
 For security-related inquiries:
 
-- **Email**: security@yourproject.com
-- **PGP Key**: [Link to PGP key if available]
+- **GitHub Security Advisories**: Primary method for vulnerability reports
+- **GitHub Issues**: For general security questions (non-sensitive)
 - **Response Time**: 48 hours for acknowledgment, 5 business days for initial assessment
 
 ### Legal
@@ -160,8 +161,8 @@ For security-related inquiries:
 This security policy is provided to encourage responsible disclosure of security vulnerabilities. By participating in our security program, you agree to:
 
 - **Not access or modify data** belonging to others
-- **Not perform testing** that could harm the availability of our services
-- **Not use social engineering** against our team members or users
+- **Not perform testing** that could harm the availability of services or systems
+- **Not use social engineering** against project contributors or users
 - **Follow responsible disclosure practices** as outlined above
 
 We commit to:

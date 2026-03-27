@@ -322,9 +322,10 @@ We welcome contributions from the security community! Please see [CONTRIBUTING.m
 ### Responsible Disclosure
 If you discover security vulnerabilities in this tool:
 1. **Do not** create public issues for security vulnerabilities
-2. Email security concerns privately to [security@yourproject.com]
-3. Allow reasonable time for fixes before public disclosure
-4. Follow coordinated vulnerability disclosure principles
+2. Create a private security advisory via GitHub's security tab
+3. Provide detailed information about the vulnerability
+4. Allow reasonable time for fixes before public disclosure
+5. Follow coordinated vulnerability disclosure principles
 
 ## Troubleshooting
 
