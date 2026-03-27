@@ -189,6 +189,33 @@ def main() -> None:
         
         console.print("[bold green][+] Reconnaissance complete. Findings summary:[/bold green]")
         
+        # Issue #20: Check for authentication requirements and prompt for session cookie
+        web_headers = recon_results.get("web_headers", {})
+        if web_headers.get("requires_auth"):
+            auth_info = web_headers.get("auth_detection", {})
+            console.print(f"\n[bold orange3]⚠ WARNING: {auth_info.get('message', 'Target requires authentication')}[/bold orange3]")
+            if auth_info.get("redirect_to"):
+                console.print(f"[yellow]Redirects to: {auth_info['redirect_to']}[/yellow]")
+            console.print("[yellow]Unauthenticated scanning will produce limited/useless results.[/yellow]\n")
+            
+            # Prompt user for session cookie
+            provide_cookie = questionary.confirm(
+                "Would you like to provide a session cookie for authenticated scanning?",
+                default=True
+            ).ask()
+            
+            if provide_cookie:
+                cookie_value = questionary.text(
+                    "Enter the Cookie header value (e.g., PHPSESSID=abc123; security=low):"
+                ).ask()
+                if cookie_value:
+                    config['cookie'] = cookie_value
+                    console.print("[bold green][+] Session cookie configured. All modules will use authenticated requests.[/bold green]")
+                else:
+                    console.print("[bold yellow][!] No cookie provided. Continuing with unauthenticated scanning.[/bold yellow]")
+            else:
+                console.print("[bold yellow][!] Continuing with unauthenticated scanning.[/bold yellow]")
+        
         # Pretty print the Tech Stack
         stack = recon_results.get("hierarchical_stack", {})
         if stack:
@@ -216,18 +243,22 @@ def main() -> None:
         from modules.web_fuzzer import run_fuzzer
         console.print("\n[bold magenta][*] Launching Web Vulnerability Fuzzer Module...[/bold magenta]")
         
-        # Prompt for optional cookie for authenticated scanning
-        use_cookie = questionary.confirm(
-            "Do you want to provide a session cookie for authenticated scanning?"
-        ).ask()
-        
-        if use_cookie:
-            cookie_value = questionary.text(
-                "Enter the Cookie header value (e.g., PHPSESSID=abc123; security=low):"
+        # Issue #20: Only prompt for cookie if not already provided during recon
+        if 'cookie' not in config:
+            # Prompt for optional cookie for authenticated scanning
+            use_cookie = questionary.confirm(
+                "Do you want to provide a session cookie for authenticated scanning?"
             ).ask()
-            if cookie_value:
-                config['cookie'] = cookie_value
-                console.print("[bold green][+] Cookie configured for authenticated scanning.[/bold green]")
+            
+            if use_cookie:
+                cookie_value = questionary.text(
+                    "Enter the Cookie header value (e.g., PHPSESSID=abc123; security=low):"
+                ).ask()
+                if cookie_value:
+                    config['cookie'] = cookie_value
+                    console.print("[bold green][+] Cookie configured for authenticated scanning.[/bold green]")
+        else:
+            console.print(f"[bold cyan][*] Using session cookie from earlier configuration.[/bold cyan]")
         
         with console.status("[bold blue]Running Nuclei and Custom Polyglot Injectors...[/bold blue]"):
             fuzzer_results = run_fuzzer(config)

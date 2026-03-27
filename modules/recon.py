@@ -153,17 +153,56 @@ def extract_searchsploit_queries(stack: Dict[str, List[str]]) -> List[str]:
 def grab_headers(target: str) -> Dict[str, Any]:
     """
     Sends an HTTP GET request to verify the target is online and to grab response headers.
+    Also detects login redirects (Issue #20).
     """
     web_target = format_target_for_web(target)
-    findings = {"url": web_target, "is_online": False, "headers": {}}
+    findings = {
+        "url": web_target, 
+        "is_online": False, 
+        "headers": {},
+        "requires_auth": False,
+        "auth_detection": {}
+    }
     
     try:
         import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning) 
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        
+        # Issue #20: First check without following redirects to detect auth requirements
+        response_no_redirect = requests.get(web_target, timeout=5, verify=False, allow_redirects=False)
+        
+        # Check for redirect to login page
+        if response_no_redirect.status_code in [301, 302, 303, 307, 308]:
+            redirect_location = response_no_redirect.headers.get('Location', '')
+            login_patterns = ['/login', '/signin', '/auth', '?redirect=', '/accounts/login']
+            
+            if any(pattern in redirect_location.lower() for pattern in login_patterns):
+                findings["requires_auth"] = True
+                findings["auth_detection"] = {
+                    "redirect_to": redirect_location,
+                    "status_code": response_no_redirect.status_code,
+                    "message": "Target redirects to login page - authentication required"
+                }
+        
+        # Now follow redirects for standard header collection
         response = requests.get(web_target, timeout=5, verify=False)
         findings["is_online"] = True
         findings["status_code"] = response.status_code
         findings["headers"] = dict(response.headers)
+        
+        # Additional auth detection: check for session cookies being set
+        if 'Set-Cookie' in response.headers and not findings["requires_auth"]:
+            cookie_header = response.headers['Set-Cookie'].lower()
+            if any(pattern in cookie_header for pattern in ['phpsessid', 'sessionid', 'jsessionid', 'session']):
+                # Presence of session cookie + redirect might indicate auth requirement
+                if response.history and len(response.history) > 0:
+                    findings["requires_auth"] = True
+                    findings["auth_detection"] = {
+                        "session_cookie_detected": True,
+                        "redirects": len(response.history),
+                        "message": "Session cookie set with redirects - likely requires authentication"
+                    }
+                    
     except requests.exceptions.RequestException as e:
         findings["error"] = str(e)
         
