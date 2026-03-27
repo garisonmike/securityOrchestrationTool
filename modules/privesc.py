@@ -3,6 +3,7 @@ Privilege Escalation Simulator Module
 """
 import paramiko
 from typing import Dict, Any
+from urllib.parse import urlparse
 
 def execute_remote_command(ssh_client: paramiko.SSHClient, command: str) -> Dict[str, str]:
     """Execute a single command via SSH and parse the streams."""
@@ -21,8 +22,9 @@ def run_privesc(config: Dict[str, Any], ssh_creds: Dict[str, str]) -> Dict[str, 
     Main entry point for the Privilege Escalation Simulator.
     Establishes an SSH connection and runs automated enumeration vectors.
     """
-    target = config.get('target', '').split(":")[0]  # strip port if attached 
-    target = target.replace('http://', '').replace('https://', '')
+    target_url = config.get('target', '')
+    parsed = urlparse(target_url if '://' in target_url else f'http://{target_url}')
+    target = parsed.hostname or target_url.split(':')[0]
     
     results: Dict[str, Any] = {
         "status": "pending",
