@@ -215,6 +215,20 @@ def main() -> None:
     if "Web Vulnerability Fuzzer" in config.get("modules", []):
         from modules.web_fuzzer import run_fuzzer
         console.print("\n[bold magenta][*] Launching Web Vulnerability Fuzzer Module...[/bold magenta]")
+        
+        # Prompt for optional cookie for authenticated scanning
+        use_cookie = questionary.confirm(
+            "Do you want to provide a session cookie for authenticated scanning?"
+        ).ask()
+        
+        if use_cookie:
+            cookie_value = questionary.text(
+                "Enter the Cookie header value (e.g., PHPSESSID=abc123; security=low):"
+            ).ask()
+            if cookie_value:
+                config['cookie'] = cookie_value
+                console.print("[bold green][+] Cookie configured for authenticated scanning.[/bold green]")
+        
         with console.status("[bold blue]Running Nuclei and Custom Polyglot Injectors...[/bold blue]"):
             fuzzer_results = run_fuzzer(config)
         session_findings["fuzzer"] = fuzzer_results

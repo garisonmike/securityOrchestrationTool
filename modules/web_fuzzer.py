@@ -162,23 +162,43 @@ def run_nuclei(target: str, auto_update: bool = True) -> Dict[str, Any]:
             except OSError:
                 pass
 
-def custom_fuzzer(target: str) -> Dict[str, Any]:
+def custom_fuzzer(target: str, cookie: str = None) -> Dict[str, Any]:
     """
     Implements intelligent custom fuzzing to detect Error-Based SQLi,
     Time-Based SQLi, and Reflected XSS with low false positives.
+    Supports optional cookie authentication.
     """
     web_target = format_target_for_web(target)
-    findings = {"xss": [], "sqli_error": [], "sqli_time": [], "errors": []}
+    findings = {"xss": [], "sqli_error": [], "sqli_time": [], "errors": [], "warnings": []}
+    
+    # Prepare headers with optional cookie
+    headers = {}
+    if cookie:
+        headers['Cookie'] = cookie
     
     # We append a dummy parameter to trigger reflections/errors if the app isn't explicitly param-routed
     test_url = web_target if '?' in web_target else f"{web_target}?q="
+    
+    # Check for authentication redirects before fuzzing
+    try:
+        probe_res = requests.get(test_url, headers=headers, timeout=10, verify=False, allow_redirects=False)
+        if probe_res.status_code in [301, 302, 303, 307, 308]:
+            redirect_location = probe_res.headers.get('Location', '')
+            if any(pattern in redirect_location.lower() for pattern in ['/login', '/signin', '/auth']):
+                findings["warnings"].append(
+                    f"⚠ Target requires authentication. Detected redirect to login page: {redirect_location}. "
+                    "Provide a session cookie for full coverage."
+                )
+                return findings
+    except requests.RequestException as e:
+        findings["errors"].append(f"Authentication check request failed: {e}")
 
     # 1. Error-Based SQLi & XSS Polyglot Detection
     xss_marker = "NCI_HACKATHON"
     polyglot_payload = f"'\"><svg/onload=alert('{xss_marker}')> OR 1=1; --"
     
     try:
-        res = requests.get(f"{test_url}{polyglot_payload}", timeout=10, verify=False)
+        res = requests.get(f"{test_url}{polyglot_payload}", headers=headers, timeout=10, verify=False)
         
         # Check XSS Reflection
         reflection_pattern = f"alert\\('{xss_marker}'\\)"
@@ -203,11 +223,11 @@ def custom_fuzzer(target: str) -> Dict[str, Any]:
     for payload in time_payloads:
         try:
             # First measure baseline with a harmless request
-            baseline_res = requests.get(f"{test_url}1", timeout=10, verify=False)
+            baseline_res = requests.get(f"{test_url}1", headers=headers, timeout=10, verify=False)
             baseline_time = baseline_res.elapsed.total_seconds()
             
             # Now trigger sleep (We set a timeout of 15 seconds to allow the 5s sleep to complete)
-            time_res = requests.get(f"{test_url}{payload}", timeout=15, verify=False)
+            time_res = requests.get(f"{test_url}{payload}", headers=headers, timeout=15, verify=False)
             attack_time = time_res.elapsed.total_seconds()
             
             # If the attack request took at least 4.5 seconds longer than the baseline, it's highly suspicious
@@ -227,6 +247,7 @@ def run_fuzzer(config: Dict[str, Any]) -> Dict[str, Any]:
     Main entry point for the Web Vulnerability Fuzzer module.
     """
     target = config.get('target', '')
+    cookie = config.get('cookie', None)  # Optional cookie for authenticated scanning
     
     results = {
         "target": target,
@@ -243,6 +264,6 @@ def run_fuzzer(config: Dict[str, Any]) -> Dict[str, Any]:
     else:
         results["nuclei_scan"] = {"status": "skipped", "error_msg": "Nuclei is not installed or not in PATH."}
         
-    results["custom_fuzzer"] = custom_fuzzer(target)
+    results["custom_fuzzer"] = custom_fuzzer(target, cookie)
     
     return results
