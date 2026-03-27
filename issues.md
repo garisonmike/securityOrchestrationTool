@@ -41,10 +41,11 @@ tag_map = {
 
 ---
 
-- [ ] **Issue #34: [BUG] Log Correlation reads from local filesystem instead of fetching from the remote target over SSH**
+- [x] **Issue #34: [BUG] Log Correlation reads from local filesystem instead of fetching from the remote target over SSH**
 
 **Labels:** bug, critical, blue-team, log-correlation  
-**Created:** 2026-03-27
+**Created:** 2026-03-27  
+**✅ FIXED:** Commit d1c8730
 
 ## Description
 The Log Correlation module opens the user-provided path as a local file. Since the path (`/var/log/apache2/access.log`) does not exist on Kali, it reads 0 lines and produces a detection score of 0. The target's logs are never examined.
@@ -87,10 +88,11 @@ lines = stdout.readlines()
 
 ---
 
-- [ ] **Issue #33: [BUG] No pre-check for SSH port availability before brute-force attempts**
+- [x] **Issue #33: [BUG] No pre-check for SSH port availability before brute-force attempts**
 
 **Labels:** bug, privesc, brute-force  
-**Created:** 2026-03-27
+**Created:** 2026-03-27  
+**✅ FIXED:** Commit d10ab04
 
 ## Description
 The brute-force module attempts SSH connections without first verifying that port 22 is open on the target. If the port is closed or the service is not SSH, every credential attempt fails with a banner error rather than fast-failing cleanly.
@@ -123,10 +125,11 @@ This should run before rate-limit detection and before any paramiko import to fa
 
 ---
 
-- [ ] **Issue #32: [BUG] SSH brute-force crashes with full paramiko traceback instead of clean error message**
+- [x] **Issue #32: [BUG] SSH brute-force crashes with full paramiko traceback instead of clean error message**
 
 **Labels:** bug, privesc, ux, brute-force  
-**Created:** 2026-03-27
+**Created:** 2026-03-27  
+**✅ FIXED:** Commit d10ab04
 
 ## Description
 When the SSH brute-force encounters a connection error (e.g. port closed, banner read failure), the full paramiko stack trace is printed to the terminal. This is noisy, confusing, and unprofessional.
@@ -303,10 +306,11 @@ Additionally:
 
 ---
 
-- [ ] **Issue #27: [BUG] No inter-module result passing — SSH session and recon data lost at module boundaries**
+- [x] **Issue #27: [BUG] No inter-module result passing — SSH session and recon data lost at module boundaries**
 
 **Labels:** bug, critical, architecture  
-**Created:** 2026-03-27
+**Created:** 2026-03-27  
+**✅ FIXED:** Commit d1c8730
 
 ## Description
 Each module runs independently with no shared state. Critical outputs (SSH session, detected tech stack, session cookie, DVWA security level) are not passed forward to dependent modules.
@@ -333,10 +337,11 @@ Each module receives and updates this context. Downstream modules check context 
 
 ---
 
-- [ ] **Issue #26: [BUG] Log Correlation module reads Kali's own log file, not the target's**
+- [x] **Issue #26: [BUG] Log Correlation module reads Kali's own log file, not the target's**
 
 **Labels:** bug, critical, blue-team, log-correlation  
-**Created:** 2026-03-27
+**Created:** 2026-03-27  
+**✅ FIXED:** Commit d1c8730
 
 ## Description
 When the user enters `/var/log/apache2/access.log`, the module reads that path from the **local Kali machine**, which is empty. The target host's logs are never fetched.
@@ -370,10 +375,11 @@ Or execute `cat /var/log/apache2/access.log` remotely and capture stdout.
 
 ---
 
-- [ ] **Issue #25: [BUG] Log Correlation module still prompts for a manual file path instead of using the SSH session**
+- [x] **Issue #25: [BUG] Log Correlation module still prompts for a manual file path instead of using the SSH session**
 
 **Labels:** bug, critical, blue-team, log-correlation  
-**Created:** 2026-03-27
+**Created:** 2026-03-27  
+**✅ FIXED:** Commit d1c8730
 
 ## Description
 After a successful SSH session is established in the PrivEsc module, the Log Correlation module still asks the user to manually enter a log file path. The SSH session object is not being passed between modules.
@@ -493,5 +499,6 @@ Web Vulnerability Fuzzer, Recon (WhatWeb, gobuster)
 
 ---
 
-**Total open issues:** 15  
-**Last synced:** 2026-03-27 20:50 GMT+3
+**Total open issues:** 9 (6 closed in session 2026-03-27)  
+**Last synced:** 2026-03-27 20:50 GMT+3  
+**Last updated:** 2026-03-27 21:35 GMT+3
