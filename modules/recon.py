@@ -338,15 +338,29 @@ def run_nmap(target: str, profile: str, http_online: bool = False) -> Dict[str, 
             cmd.append('-Pn')
         cmd.append(nmap_target)
 
+    # Issue #24: Log the actual command for debugging
+    cmd_str = ' '.join(cmd)
+    print(f"[DEBUG] Executing nmap command: {cmd_str}")
+
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=300)
-        return {"status": "success", "raw_output": result.stdout, "skip_ping_used": skip_ping}
+        return {
+            "status": "success", 
+            "raw_output": result.stdout, 
+            "skip_ping_used": skip_ping,
+            "command_executed": cmd_str  # Issue #24: Include actual command in output
+        }
     except subprocess.CalledProcessError as e:
-        return {"status": "error", "error_msg": f"Nmap failed with exit code {e.returncode}", "raw_output": e.stdout + e.stderr}
+        return {
+            "status": "error", 
+            "error_msg": f"Nmap failed with exit code {e.returncode}", 
+            "raw_output": e.stdout + e.stderr,
+            "command_executed": cmd_str
+        }
     except subprocess.TimeoutExpired:
-        return {"status": "error", "error_msg": "Nmap scan timed out."}
+        return {"status": "error", "error_msg": "Nmap scan timed out.", "command_executed": cmd_str}
     except Exception as e:
-        return {"status": "error", "error_msg": f"Unexpected error executing nmap: {e}"}
+        return {"status": "error", "error_msg": f"Unexpected error executing nmap: {e}", "command_executed": cmd_str}
 
 def run_gobuster(target: str, wordlist: str = "/usr/share/wordlists/dirb/common.txt") -> Dict[str, Any]:
     web_target = format_target_for_web(target)
