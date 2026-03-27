@@ -4,10 +4,11 @@ Use this checklist to track completion status. Issues synced from GitHub on 2026
 
 ---
 
-- [ ] **Issue #35: [BUG] Nuclei tag wiring broken — detected tech stack not read by fuzzer module**
+- [x] **Issue #35: [BUG] Nuclei tag wiring broken — detected tech stack not read by fuzzer module**
 
 **Labels:** bug, critical, fuzzer, nuclei  
-**Created:** 2026-03-27
+**Created:** 2026-03-27  
+**✅ FIXED:** Commit bfa7d88
 
 ## Description
 Despite the recon module correctly identifying Apache in the tech stack, the fuzzer module builds the Nuclei command with no tags. The stack output from recon is not being consumed by the fuzzer.
@@ -164,10 +165,11 @@ The terminal should never show a raw traceback to the end user.
 
 ---
 
-- [ ] **Issue #31: [BUG] Nuclei template auto-selection wired incorrectly — tags not passed despite stack detection**
+- [x] **Issue #31: [BUG] Nuclei template auto-selection wired incorrectly — tags not passed despite stack detection**
 
 **Labels:** bug, fuzzer, nuclei  
-**Created:** 2026-03-27
+**Created:** 2026-03-27  
+**✅ FIXED:** Commit bfa7d88
 
 ## Description
 The tech stack is now correctly detected (Apache/Ubuntu) but Nuclei still runs with no template tags. The stack data is not being read by the fuzzer module when building the Nuclei command.
@@ -247,10 +249,11 @@ except (SSHException, EOFError, socket.error) as e:
 
 ---
 
-- [ ] **Issue #29: [BUG] Terminal and report output still contains raw Python dict / JSON blobs**
+- [x] **Issue #29: [BUG] Terminal and report output still contains raw Python dict / JSON blobs**
 
 **Labels:** bug, ux, reporting  
-**Created:** 2026-03-27
+**Created:** 2026-03-27  
+**✅ FIXED:** Commit ec0bebc
 
 ## Description
 The tool prints full raw Python dicts to the terminal after every module. The report likely mirrors this. This is unreadable, leaks sensitive values (session cookies, credentials), and looks unprofessional.
@@ -499,6 +502,6 @@ Web Vulnerability Fuzzer, Recon (WhatWeb, gobuster)
 
 ---
 
-**Total open issues:** 9 (6 closed in session 2026-03-27)  
+**Total open issues:** 6 (9 closed in session 2026-03-27)  
 **Last synced:** 2026-03-27 20:50 GMT+3  
-**Last updated:** 2026-03-27 21:35 GMT+3
+**Last updated:** 2026-03-27 21:45 GMT+3
