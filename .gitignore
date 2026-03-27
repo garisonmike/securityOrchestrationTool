@@ -230,14 +230,15 @@ reports/
 *.report.md
 *.report.html
 
+# Test Files and Development Artifacts
+*test*.py
+*test*.md
+*Test*.py
+*Test*.md
+demo.py
+full_test_output.log
+
 # OS/IDE
 .DS_Store
 .idea/
 .vscode/
-
-
-# Agile Trackers
-# issues.md
-# issuesReport.md
-create_issues.py
-issues.sh

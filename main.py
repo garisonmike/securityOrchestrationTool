@@ -240,7 +240,7 @@ def main() -> None:
         # Issue #23: Display DVWA security level if detected
         dvwa_level = recon_results.get("dvwa_security_level", {})
         if dvwa_level.get("detected"):
-            console.print(f"\n[bold magenta]🎯 {dvwa_level['note']}[/bold magenta]")
+            console.print(f"\n[bold magenta]Target: {dvwa_level['note']}[/bold magenta]")
             console.print(f"[cyan]   Detection method: {dvwa_level['method']}[/cyan]\n")
         
         # Pretty print the Tech Stack
