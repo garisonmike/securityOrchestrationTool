@@ -281,6 +281,85 @@ def run_gobuster(target: str, wordlist: str = "/usr/share/wordlists/dirb/common.
         return {"status": "error", "error_msg": f"Unexpected error executing gobuster: {e}"}
 
 
+def detect_dvwa_security_level(target: str, cookie: str = None) -> Dict[str, Any]:
+    """
+    Issue #23: Detect DVWA security level after authentication.
+    
+    Checks:
+    1. Security cookie value (fastest)
+    2. Parse /dvwa/security.php page (fallback)
+    
+    Returns:
+        {
+            "detected": bool,
+            "level": str ("low"/"medium"/"high"/"impossible"),
+            "method": str,
+            "note": str
+        }
+    """
+    result = {"detected": False, "level": None, "method": None, "note": None}
+    
+    web_target = format_target_for_web(target)
+    
+    # Method 1: Check security cookie
+    if cookie and 'security=' in cookie.lower():
+        import re
+        match = re.search(r'security=(\w+)', cookie, re.IGNORECASE)
+        if match:
+            level = match.group(1).lower()
+            if level in ['low', 'medium', 'high', 'impossible']:
+                result = {
+                    "detected": True,
+                    "level": level,
+                    "method": "cookie",
+                    "note": f"DVWA security level detected: {level} — certain vulnerability classes may be filtered at this level."
+                }
+                return result
+    
+    # Method 2: Parse security.php page (requires auth)
+    if cookie and '/dvwa' in web_target.lower():
+        try:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            # Build security.php URL
+            base_url = web_target.rstrip('/')
+            if '/dvwa' in base_url:
+                # Extract up to /dvwa
+                dvwa_base = base_url[:base_url.lower().find('/dvwa') + 5]
+            else:
+                dvwa_base = base_url + '/dvwa'
+            
+            security_url = f"{dvwa_base}/security.php"
+            
+            headers = {'Cookie': cookie}
+            response = requests.get(security_url, headers=headers, timeout=5, verify=False)
+            
+            if response.status_code == 200:
+                # Parse the page for security level
+                import re
+                # DVWA shows security level in the page content
+                level_match = re.search(r'Security Level is currently:\s*<em>(\w+)</em>', response.text, re.IGNORECASE)
+                if not level_match:
+                    # Alternative pattern
+                    level_match = re.search(r'<option[^>]*selected[^>]*>(\w+)</option>', response.text, re.IGNORECASE)
+                
+                if level_match:
+                    level = level_match.group(1).lower()
+                    if level in ['low', 'medium', 'high', 'impossible']:
+                        result = {
+                            "detected": True,
+                            "level": level,
+                            "method": "security.php",
+                            "note": f"DVWA security level detected: {level} — certain vulnerability classes may be filtered at this level."
+                        }
+                        return result
+        except Exception:
+            pass  # Silent fail - DVWA detection is optional
+    
+    return result
+
+
 def run_recon(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Main entry point for the Reconnaissance module.
@@ -288,6 +367,7 @@ def run_recon(config: Dict[str, Any]) -> Dict[str, Any]:
     target = config.get('target', '')
     profile = config.get('profile', 'Stealth')
     opsec_level = config.get('opsec_level', 'stealth').lower()
+    cookie = config.get('cookie', None)
     web_target = format_target_for_web(target)
     nmap_target = clean_target_for_nmap(target)
     
@@ -301,7 +381,8 @@ def run_recon(config: Dict[str, Any]) -> Dict[str, Any]:
         "hierarchical_stack": {},
         "searchsploit_results": {},
         "nmap_scan": {},
-        "gobuster_scan": {}
+        "gobuster_scan": {},
+        "dvwa_security_level": {}
     }
     
     deps = check_dependencies()
@@ -311,6 +392,11 @@ def run_recon(config: Dict[str, Any]) -> Dict[str, Any]:
     if not findings["web_headers"].get("is_online", False):
         findings["error"] = "Target appears to be offline or unreachable via HTTP. Aborting further recon."
         return findings
+    
+    # Issue #23: Detect DVWA security level if cookie is available
+    if cookie:
+        dvwa_level = detect_dvwa_security_level(target, cookie)
+        findings["dvwa_security_level"] = dvwa_level
 
     if deps.get('whatweb'):
         findings["tech_stack"] = run_whatweb(target)

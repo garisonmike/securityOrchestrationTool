@@ -211,10 +211,21 @@ def main() -> None:
                 if cookie_value:
                     config['cookie'] = cookie_value
                     console.print("[bold green][+] Session cookie configured. All modules will use authenticated requests.[/bold green]")
+                    
+                    # Re-run recon with cookie to detect DVWA level
+                    console.print("[bold cyan][*] Re-running recon with authentication to detect target configuration...[/bold cyan]")
+                    recon_results = run_recon(config)
+                    session_findings["recon"] = recon_results
                 else:
                     console.print("[bold yellow][!] No cookie provided. Continuing with unauthenticated scanning.[/bold yellow]")
             else:
                 console.print("[bold yellow][!] Continuing with unauthenticated scanning.[/bold yellow]")
+        
+        # Issue #23: Display DVWA security level if detected
+        dvwa_level = recon_results.get("dvwa_security_level", {})
+        if dvwa_level.get("detected"):
+            console.print(f"\n[bold magenta]🎯 {dvwa_level['note']}[/bold magenta]")
+            console.print(f"[cyan]   Detection method: {dvwa_level['method']}[/cyan]\n")
         
         # Pretty print the Tech Stack
         stack = recon_results.get("hierarchical_stack", {})
