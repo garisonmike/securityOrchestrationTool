@@ -174,7 +174,7 @@ def run_whatweb(target: str) -> Dict[str, Any]:
     Executes whatweb to identify the target's tech stack and plugin versions.
     """
     web_target = format_target_for_web(target)
-    cmd = ['whatweb', web_target, '-q', '--log-json=-']
+    cmd = ['whatweb', web_target, '-q', '--log-json=-', '--follow-redirect=always', '-a', '3']
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=60)
@@ -182,6 +182,8 @@ def run_whatweb(target: str) -> Dict[str, Any]:
             parsed = json.loads(result.stdout)
             if isinstance(parsed, list) and len(parsed) > 0:
                 plugins = parsed[0].get("plugins", {})
+                if not plugins:
+                    return {"status": "warning", "error_msg": "No plugins found by Whatweb - may indicate redirect or auth issue"}
                 return {"status": "success", "tech_stack": plugins}
             return {"status": "error", "error_msg": "No plugins found by Whatweb"}
         except json.JSONDecodeError:
