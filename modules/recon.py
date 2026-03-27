@@ -193,16 +193,26 @@ def run_whatweb(target: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "error", "error_msg": f"Unexpected error: {e}"}
 
-def run_nmap(target: str, profile: str) -> Dict[str, Any]:
+def run_nmap(target: str, profile: str, http_online: bool = False) -> Dict[str, Any]:
     nmap_target = clean_target_for_nmap(target)
+    
+    # Determine if we should skip host discovery (-Pn)
+    skip_ping = http_online or nmap_target in ['localhost', '127.0.0.1', '::1']
+    
     if profile.lower() == 'stealth':
-        cmd = ['nmap', '-T2', '-sV', nmap_target]
+        cmd = ['nmap', '-T2', '-sV']
+        if skip_ping:
+            cmd.append('-Pn')
+        cmd.append(nmap_target)
     else:
-        cmd = ['nmap', '-T4', '-A', nmap_target]
+        cmd = ['nmap', '-T4', '-A']
+        if skip_ping:
+            cmd.append('-Pn')
+        cmd.append(nmap_target)
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=300)
-        return {"status": "success", "raw_output": result.stdout}
+        return {"status": "success", "raw_output": result.stdout, "skip_ping_used": skip_ping}
     except subprocess.CalledProcessError as e:
         return {"status": "error", "error_msg": f"Nmap failed with exit code {e.returncode}", "raw_output": e.stdout + e.stderr}
     except subprocess.TimeoutExpired:
@@ -291,7 +301,8 @@ def run_recon(config: Dict[str, Any]) -> Dict[str, Any]:
 
     # Standard tool runs
     if deps.get('nmap'):
-        findings["nmap_scan"] = run_nmap(target, profile)
+        http_is_online = findings["web_headers"].get("is_online", False)
+        findings["nmap_scan"] = run_nmap(target, profile, http_is_online)
     if deps.get('gobuster'):
         if opsec_level == 'stealth':
             findings["gobuster_scan"] = {"status": "skipped", "error_msg": "Gobuster skipped in stealth mode to prevent logs."}
