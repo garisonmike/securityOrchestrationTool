@@ -324,26 +324,36 @@ def run_whatweb(target: str) -> Dict[str, Any]:
 def run_nmap(target: str, profile: str, http_online: bool = False) -> Dict[str, Any]:
     nmap_target = clean_target_for_nmap(target)
     
-    # Determine if we should skip host discovery (-Pn)
+    # Issue #24 FIX: Always use -Pn when HTTP is confirmed online
+    # Many modern firewalls block ping but allow HTTP, so if web check passed, force -Pn
     skip_ping = http_online or nmap_target in ['localhost', '127.0.0.1', '::1']
     
+    # Issue #24 FIX: Build command more systematically to ensure -Pn is included
     if profile.lower() == 'stealth':
         cmd = ['nmap', '-T2', '-sV']
-        if skip_ping:
-            cmd.append('-Pn')
-        cmd.append(nmap_target)
     else:
         cmd = ['nmap', '-T4', '-A']
-        if skip_ping:
-            cmd.append('-Pn')
-        cmd.append(nmap_target)
+    
+    # Issue #24 FIX: Always add -Pn if we know target is reachable via HTTP
+    if skip_ping:
+        cmd.append('-Pn')
+    
+    # Add target at the end
+    cmd.append(nmap_target)
 
     # Issue #24: Log the actual command for debugging
     cmd_str = ' '.join(cmd)
     print(f"[DEBUG] Executing nmap command: {cmd_str}")
+    print(f"[DEBUG] http_online={http_online}, nmap_target='{nmap_target}', skip_ping={skip_ping}")
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=300)
+        
+        # Issue #24: Check if nmap actually found hosts
+        if "0 hosts up" in result.stdout and http_online:
+            print(f"[WARNING] Nmap found 0 hosts but HTTP check confirmed target is online")
+            print(f"[WARNING] This may indicate firewall blocking ping, but -Pn was used: {'-Pn' in cmd}")
+            
         return {
             "status": "success", 
             "raw_output": result.stdout, 
