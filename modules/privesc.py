@@ -3,8 +3,34 @@ Privilege Escalation Simulator Module
 """
 import paramiko
 import time
+import socket
 from typing import Dict, Any, Tuple
 from urllib.parse import urlparse
+from paramiko.ssh_exception import SSHException
+
+
+def is_ssh_port_open(hostname: str, port: int = 22, timeout: int = 3) -> Tuple[bool, str]:
+    """
+    Issue #33: Pre-check SSH port availability before attempting connections.
+    
+    Returns:
+        (is_open: bool, message: str)
+    """
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((hostname, port))
+        sock.close()
+        
+        if result == 0:
+            return (True, f"Port {port} is open on {hostname}")
+        else:
+            return (False, f"Port {port} is closed or filtered on {hostname}")
+    except socket.gaierror:
+        return (False, f"Hostname {hostname} could not be resolved")
+    except Exception as e:
+        return (False, f"Port check failed: {str(e)}")
+
 
 def detect_ssh_rate_limiting(hostname: str, port: int = 22) -> Tuple[bool, str]:
     """
@@ -92,6 +118,7 @@ def execute_remote_command(ssh_client: paramiko.SSHClient, command: str) -> Dict
 def try_default_ssh_credentials(hostname: str, port: int = 22) -> Dict[str, Any]:
     """
     Issue #14: Attempt common default SSH credentials.
+    Issue #32 & #33: Clean error handling with port pre-check.
     Only called if rate limiting check passes.
     
     Returns:
@@ -102,6 +129,16 @@ def try_default_ssh_credentials(hostname: str, port: int = 22) -> Dict[str, Any]
             "message": str
         }
     """
+    # Issue #33: Pre-check SSH port before brute-force
+    port_open, port_msg = is_ssh_port_open(hostname, port)
+    if not port_open:
+        return {
+            "success": False,
+            "credentials": None,
+            "attempts": 0,
+            "message": f"[!] {port_msg} — skipping SSH brute-force."
+        }
+    
     # Short list of common default credentials
     default_creds = [
         ("admin", "admin"),
@@ -141,13 +178,37 @@ def try_default_ssh_credentials(hostname: str, port: int = 22) -> Dict[str, Any]
         except paramiko.AuthenticationException:
             # Expected - credentials didn't work, try next
             pass
-        except Exception as e:
-            # Network issue or other error - stop trying
+        except SSHException as e:
+            # Issue #32: Clean SSH error messages
             return {
                 "success": False,
                 "credentials": None,
                 "attempts": default_creds.index((username, password)) + 1,
-                "message": f"Brute-force stopped due to error: {str(e)}"
+                "message": f"[!] SSH error: {str(e)} — skipping."
+            }
+        except EOFError:
+            # Issue #32: SSH port closed or not an SSH service
+            return {
+                "success": False,
+                "credentials": None,
+                "attempts": default_creds.index((username, password)) + 1,
+                "message": "[!] SSH port closed or not an SSH service — aborting brute-force."
+            }
+        except socket.error as e:
+            # Issue #32: Network/socket errors
+            return {
+                "success": False,
+                "credentials": None,
+                "attempts": default_creds.index((username, password)) + 1,
+                "message": f"[!] SSH connection failed: {str(e)}"
+            }
+        except Exception as e:
+            # Issue #32: Catch-all for unexpected errors with clean message
+            return {
+                "success": False,
+                "credentials": None,
+                "attempts": default_creds.index((username, password)) + 1,
+                "message": f"[!] Unexpected error during brute-force: {type(e).__name__}: {str(e)}"
             }
         finally:
             ssh.close()
@@ -211,14 +272,25 @@ def run_privesc(config: Dict[str, Any], ssh_creds: Dict[str, str]) -> Dict[str, 
             results["findings"][key] = run_result
 
     except paramiko.AuthenticationException:
+        # Issue #32: Clean error message
         results["status"] = "error"
         results["error_msg"] = "Authentication failed. Invalid username or password."
-    except paramiko.SSHException as e:
+    except SSHException as e:
+        # Issue #32: Clean SSH error message
         results["status"] = "error"
-        results["error_msg"] = f"SSH error occurred: {e}"
+        results["error_msg"] = f"[!] SSH error: {str(e)} — connection failed."
+    except EOFError:
+        # Issue #32: SSH service not available
+        results["status"] = "error"
+        results["error_msg"] = "[!] SSH port closed or not an SSH service."
+    except socket.error as e:
+        # Issue #32: Network errors
+        results["status"] = "error"
+        results["error_msg"] = f"[!] Network error: {str(e)}"
     except Exception as e:
+        # Issue #32: Catch-all with clean error (no traceback to user)
         results["status"] = "error"
-        results["error_msg"] = f"Unexpected connection error: {e}"
+        results["error_msg"] = f"[!] Unexpected error: {type(e).__name__}: {str(e)}"
     finally:
         # Always ensure the connection is closed
         ssh.close()
