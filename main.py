@@ -8,6 +8,7 @@ import sys
 import argparse
 import shutil
 import subprocess
+import re
 from typing import Dict, Any, Optional
 
 try:
@@ -20,6 +21,21 @@ except ImportError:
 
 # Initialize Rich console
 console = Console()
+
+def redact_sensitive_data(text: str) -> str:
+    """
+    Issue #29: Redact sensitive data from output (session cookies, credentials).
+    """
+    # Redact session cookies (PHPSESSID, JSESSIONID, etc.)
+    text = re.sub(r'(PHPSESSID|JSESSIONID|session|SESSION)=[a-zA-Z0-9]+', r'\1=***REDACTED***', text, flags=re.IGNORECASE)
+    
+    # Redact cookie header values
+    text = re.sub(r'Cookie:\s*[^\n]+', 'Cookie: ***REDACTED***', text, flags=re.IGNORECASE)
+    
+    # Redact passwords in credential pairs
+    text = re.sub(r'(password|passwd|pwd)["\s:=]+([^\s,}\]]+)', r'\1: ***REDACTED***', text, flags=re.IGNORECASE)
+    
+    return text
 
 def display_banner() -> None:
     """Displays the stylized application banner."""
@@ -246,9 +262,25 @@ def main() -> None:
                         title = v.get('Title', 'Unknown')
                         edb = v.get('EDB_ID', 'N/A')
                         console.print(f"    - {title} (EDB: {edb})")
-                        
-        console.print("\n[bold]Raw Findings JSON:[/bold]")
-        console.print(recon_results)
+        
+        # Issue #29: Remove raw dict printing - already pretty-printed above
+        # Nmap summary
+        nmap_scan = recon_results.get("nmap_scan", {})
+        if nmap_scan.get("status") == "success":
+            console.print("\n[bold green][+] Nmap scan completed successfully[/bold green]")
+            if nmap_scan.get("skip_ping_used"):
+                console.print("  [cyan]Note: Host discovery skipped (-Pn used)[/cyan]")
+        elif nmap_scan.get("status") == "error":
+            console.print(f"\n[bold red][!] Nmap scan failed: {nmap_scan.get('error_msg', 'Unknown error')}[/bold red]")
+        
+        # Gobuster summary
+        gobuster_scan = recon_results.get("gobuster_scan", {})
+        if gobuster_scan.get("status") == "success":
+            paths = gobuster_scan.get("discovered_paths", [])
+            console.print(f"\n[bold green][+] Directory enumeration complete: {len(paths)} paths discovered[/bold green]")
+        elif gobuster_scan.get("status") == "skipped":
+            console.print(f"\n[yellow]Directory enumeration skipped: {gobuster_scan.get('error_msg', 'Unknown')}[/yellow]")
+
 
     if "Web Vulnerability Fuzzer" in config.get("modules", []):
         from modules.web_fuzzer import run_fuzzer
@@ -293,6 +325,29 @@ def main() -> None:
         
         if nuclei_scan.get("warning"):
             console.print(f"[bold yellow]{nuclei_scan['warning']}[/bold yellow]")
+        
+        # Issue #29: Display custom fuzzer results summary
+        custom_fuzzer = fuzzer_results.get("custom_fuzzer", {})
+        if custom_fuzzer:
+            xss_count = len(custom_fuzzer.get("xss", []))
+            sqli_error_count = len(custom_fuzzer.get("sqli_error", []))
+            sqli_time_count = len(custom_fuzzer.get("sqli_time", []))
+            
+            if xss_count > 0 or sqli_error_count > 0 or sqli_time_count > 0:
+                console.print("\n[bold red][+] Custom fuzzer findings:[/bold red]")
+                if xss_count > 0:
+                    console.print(f"  [red]XSS vulnerabilities: {xss_count}[/red]")
+                if sqli_error_count > 0:
+                    console.print(f"  [red]SQLi (error-based): {sqli_error_count}[/red]")
+                if sqli_time_count > 0:
+                    console.print(f"  [red]SQLi (time-based): {sqli_time_count}[/red]")
+            else:
+                console.print("\n[cyan]Custom fuzzer: No vulnerabilities detected[/cyan]")
+            
+            # Display warnings if any
+            warnings = custom_fuzzer.get("warnings", [])
+            for warning in warnings:
+                console.print(f"[yellow]{warning}[/yellow]")
         
         console.print("[bold green][+] Web Vulnerability Fuzzer complete.[/bold green]")
 
