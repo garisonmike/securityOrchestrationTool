@@ -243,6 +243,13 @@ def main() -> None:
         from modules.web_fuzzer import run_fuzzer
         console.print("\n[bold magenta][*] Launching Web Vulnerability Fuzzer Module...[/bold magenta]")
         
+        # Issue #21: Pass tech stack from recon to fuzzer for Nuclei template selection
+        if "recon" in session_findings:
+            recon_stack = session_findings["recon"].get("hierarchical_stack", {})
+            if recon_stack:
+                config['hierarchical_stack'] = recon_stack
+                console.print(f"[bold cyan][*] Using detected tech stack for intelligent template selection.[/bold cyan]")
+        
         # Issue #20: Only prompt for cookie if not already provided during recon
         if 'cookie' not in config:
             # Prompt for optional cookie for authenticated scanning
@@ -264,8 +271,19 @@ def main() -> None:
             fuzzer_results = run_fuzzer(config)
         session_findings["fuzzer"] = fuzzer_results
         
-        console.print("[bold green][+] Web Vulnerability Fuzzer complete. Findings summary:[/bold green]")
-        console.print(fuzzer_results)
+        # Issue #21: Display Nuclei metadata
+        nuclei_scan = fuzzer_results.get("nuclei_scan", {})
+        if nuclei_scan.get("status") == "success":
+            meta = nuclei_scan.get("meta", {})
+            console.print(f"[bold green][+] Nuclei scan complete:[/bold green]")
+            console.print(f"  Tags used: {meta.get('tags_string', 'none')}")
+            console.print(f"  Templates matched: {meta.get('templates_matched', 0)}")
+            console.print(f"  Severity filter: {meta.get('severity_filter', 'default')}")
+        
+        if nuclei_scan.get("warning"):
+            console.print(f"[bold yellow]{nuclei_scan['warning']}[/bold yellow]")
+        
+        console.print("[bold green][+] Web Vulnerability Fuzzer complete.[/bold green]")
 
     # Issue #13: Make SSH credentials prompt optional
     # Issue #17: Conditional module execution - track SSH session success
