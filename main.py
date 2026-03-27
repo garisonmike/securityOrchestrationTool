@@ -236,46 +236,86 @@ def main() -> None:
         console.print("[bold green][+] Web Vulnerability Fuzzer complete. Findings summary:[/bold green]")
         console.print(fuzzer_results)
 
+    # Issue #13: Make SSH credentials prompt optional
+    # Issue #17: Conditional module execution - track SSH session success
+    ssh_session_established = False
+    
     if "Privilege Escalation Simulator" in config.get("modules", []):
         from modules.privesc import run_privesc
         console.print("\n[bold magenta][*] Launching Privilege Escalation Simulator...[/bold magenta]")
         
-        # We need credentials to proceed
+        # Issue #13: Add option to skip SSH prompt
         console.print("[yellow]SSH Credentials required for post-exploitation simulation.[/yellow]")
-        ssh_user = questionary.text("Enter SSH Username:").ask()
-        ssh_pass = questionary.password("Enter SSH Password:").ask()
+        skip_privesc = questionary.confirm(
+            "Do you want to run PrivEsc simulation? (requires SSH access)",
+            default=True
+        ).ask()
         
-        if ssh_user and ssh_pass:
-            ssh_creds = {"username": ssh_user, "password": ssh_pass}
-            with console.status("[bold blue]Connecting via SSH and simulating privesc vectors...[/bold blue]"):
-                privesc_results = run_privesc(config, ssh_creds)
-            session_findings["privesc"] = privesc_results
+        if skip_privesc:
+            ssh_user = questionary.text(
+                "Enter SSH Username (or press Enter to skip):",
+                default=""
+            ).ask()
             
-            console.print("[bold green][+] PrivEsc Simulation complete. Findings summary:[/bold green]")
-            console.print(privesc_results)
+            # Allow skipping by leaving username empty
+            if ssh_user and ssh_user.strip():
+                ssh_pass = questionary.password("Enter SSH Password:").ask()
+                
+                if ssh_pass:
+                    ssh_creds = {"username": ssh_user, "password": ssh_pass}
+                    with console.status("[bold blue]Connecting via SSH and simulating privesc vectors...[/bold blue]"):
+                        privesc_results = run_privesc(config, ssh_creds)
+                    session_findings["privesc"] = privesc_results
+                    
+                    # Issue #17: Track whether SSH actually succeeded
+                    if privesc_results.get("status") == "connected":
+                        ssh_session_established = True
+                        console.print("[bold green][+] PrivEsc Simulation complete. SSH session established successfully.[/bold green]")
+                        console.print(privesc_results)
+                    else:
+                        console.print(f"[bold red][!] PrivEsc Simulation failed: {privesc_results.get('error_msg', 'Unknown error')}[/bold red]")
+                else:
+                    console.print("[bold yellow][!] PrivEsc simulation skipped by user (no password provided).[/bold yellow]")
+                    session_findings["privesc"] = {"status": "skipped", "reason": "User skipped password entry"}
+            else:
+                console.print("[bold yellow][!] PrivEsc simulation skipped by user (no username provided).[/bold yellow]")
+                session_findings["privesc"] = {"status": "skipped", "reason": "User skipped username entry"}
         else:
-            console.print("[bold red][!] PrivEsc Simulation aborted: Missing credentials.[/bold red]")
+            console.print("[bold yellow][!] PrivEsc simulation skipped by user.[/bold yellow]")
+            session_findings["privesc"] = {"status": "skipped", "reason": "User chose to skip"}
 
+    # Issue #16: Skip Log Correlation entirely if no SSH session was established
+    # Issue #17: Conditional module execution based on SSH success
     if "Blue Team Log Correlation Engine" in config.get("modules", []):
         from modules.log_analyzer import analyze_logs
         console.print("\n[bold magenta][*] Launching Blue Team Log Correlation Engine...[/bold magenta]")
         
-        log_file = questionary.path("Enter path to the log file to analyze (e.g., /var/log/apache2/access.log):").ask()
-        
-        if log_file:
-            with console.status(f"[bold blue]Analyzing {log_file} for tool signatures...[/bold blue]"):
-                log_results = analyze_logs(log_file)
-            session_findings["log_analysis"] = log_results
-            
-            if log_results.get("status") == "error":
-                for err in log_results.get("errors", []):
-                    console.print(f"[bold red][!] {err}[/bold red]")
-            else:
-                score = log_results.get("detection_score", 0)
-                console.print(f"[bold green][+] Log Analysis complete. Detection Score: {score}[/bold green]")
-                console.print(log_results)
+        if not ssh_session_established:
+            console.print("[bold yellow][!] Log Correlation skipped: No SSH session was established.[/bold yellow]")
+            console.print("[yellow]Note: Log correlation requires an active SSH connection from the PrivEsc module.[/yellow]")
+            session_findings["log_analysis"] = {
+                "status": "skipped", 
+                "reason": "No shell access obtained",
+                "note": "Log Correlation skipped: no shell access obtained"
+            }
         else:
-            console.print("[bold red][!] Log Correlation aborted: No file provided.[/bold red]")
+            log_file = questionary.path("Enter path to the log file to analyze (e.g., /var/log/apache2/access.log):").ask()
+            
+            if log_file:
+                with console.status(f"[bold blue]Analyzing {log_file} for tool signatures...[/bold blue]"):
+                    log_results = analyze_logs(log_file)
+                session_findings["log_analysis"] = log_results
+                
+                if log_results.get("status") == "error":
+                    for err in log_results.get("errors", []):
+                        console.print(f"[bold red][!] {err}[/bold red]")
+                else:
+                    score = log_results.get("detection_score", 0)
+                    console.print(f"[bold green][+] Log Analysis complete. Detection Score: {score}[/bold green]")
+                    console.print(log_results)
+            else:
+                console.print("[bold yellow][!] Log Correlation skipped: No file provided.[/bold yellow]")
+                session_findings["log_analysis"] = {"status": "skipped", "reason": "No file path provided"}
 
     # ==========================
     # Final Stage: Generate IR Report
