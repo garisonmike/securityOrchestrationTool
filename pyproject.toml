@@ -1,0 +1,96 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "security-orchestrator"
+version = "0.1.0"
+description = "Typed, tested rewrite of the security orchestration/correlation engine (see plan.md)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Mike Moreti" },
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+]
+
+# Runtime dependencies. Matches the legacy requirements.txt, plus pydantic -
+# the one net-new dependency the plan introduces (plan.md Section 3), used
+# starting Phase 1 for core/models.py and confined there rather than spread
+# through business logic.
+dependencies = [
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+    "questionary>=2.0.0",
+    "paramiko>=3.0.0",
+    "requests>=2.30.0",
+    "jinja2>=3.0.0",
+]
+
+[project.urls]
+Repository = "https://github.com/garisonmike/securityOrchestrationTool"
+
+# [project.scripts] intentionally omitted until Phase 4 defines
+# security_orchestrator.cli:main - a console-script entry point pointing at
+# a function that does not exist yet would be exactly the kind of
+# doc-promises-a-feature-the-code-does-not-back gap this rewrite exists to
+# close (plan.md Section 0.1, items 10-11).
+
+# Dev/test toolchain is deliberately lean per plan.md Phase-0 and Section
+# 0.1 item 10: pytest + pytest-cov + stdlib unittest.mock (no dependency).
+# No linters/security scanners bundled here yet - CONTRIBUTING.md's
+# black/flake8/mypy/bandit/safety references predate this rewrite and are
+# reconciled separately (plan.md Goals, "docs reconciled with what ships").
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["security_orchestrator*"]
+
+# Jinja report templates are data files that must ship with the package so
+# the renderer can load them from an installed (non-editable) location too.
+[tool.setuptools.package-data]
+"security_orchestrator.report" = ["templates/*.j2"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--cov=security_orchestrator",
+    "--cov-report=term-missing",
+    # Coverage gate (plan.md Section 6). core/ ~99% and adapters/ ~90%
+    # comfortably clear the >=90% target; modules/ ~86% clears the >=80%
+    # target. This global floor (85%) fails CI if the suite regresses below
+    # it - and the conftest safety net fails CI if any test opens a real
+    # socket/subprocess outside the injectable-runner path.
+    "--cov-fail-under=85",
+]
+
+[tool.coverage.run]
+source = ["security_orchestrator"]
+branch = true
+omit = [
+    # Non-Python data files and the trivial module entrypoint shim.
+    "*/templates/*",
+    "*/__main__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
