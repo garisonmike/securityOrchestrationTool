@@ -231,14 +231,19 @@ reports/
 *.report.html
 
 # Test Files and Development Artifacts
-*test*.py
 *test*.md
-*Test*.py
 *Test*.md
 demo.py
+demo_test.py
+scratch_test_*.py
 full_test_output.log
 
 # OS/IDE
 .DS_Store
 .idea/
 .vscode/
+create_issues.py
+issues.sh
+
+# Local development notes (kept on disk, not tracked)
+plan.md
