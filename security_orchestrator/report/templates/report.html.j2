@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Automated Security Orchestration Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
+        h1 { color: #2c3e50; }
+        h2 { color: #2980b9; border-bottom: 2px solid #2980b9; padding-bottom: 5px; }
+        h3 { color: #16a085; }
+        pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto;
+              font-family: "Courier New", Courier, monospace; }
+        .section { margin-bottom: 30px; }
+        .footer { margin-top: 50px; font-size: 0.9em; color: #7f8c8d;
+                  border-top: 1px solid #ccc; padding-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Automated Security Orchestration Report</h1>
+
+    <div class="section">
+        <h2>Executive Summary</h2>
+        <p>Automated security orchestration run against <strong>{{ report.target }}</strong>.</p>
+    </div>
+
+    <div class="section">
+        <h2>Recon Data</h2>
+        {% if report.recon %}
+        <p>Status: {{ report.recon.status }}</p>
+        {% if report.recon.reason %}<p>Note: {{ report.recon.reason }}</p>{% endif %}
+        {% if report.recon.status == "success" %}
+        <h3>Tech Stack (OPSEC: {{ report.recon.opsec_level | title }})</h3>
+        <ul>
+        {% for category, items in report.recon.hierarchical_stack.items() %}
+            {% if category != "error" %}
+            <li><strong>{{ category | replace("_", " ") | title }}</strong>:
+                {% if items %}
+                <ul>{% for item in items %}<li>{{ item }}</li>{% endfor %}</ul>
+                {% else %}<em>none detected</em>{% endif %}
+            </li>
+            {% endif %}
+        {% endfor %}
+        </ul>
+
+        <h3>Searchsploit Results</h3>
+        {% if report.recon.searchsploit_results %}
+        {% for query, results in report.recon.searchsploit_results.items() %}
+            <p><strong>{{ query }}</strong>:</p>
+            <ul>{% for res in results %}<li>{{ res.title }} (EDB-ID: {{ res.edb_id or "N/A" }})</li>{% endfor %}</ul>
+        {% endfor %}
+        {% else %}<p>No searchsploit mappings found.</p>{% endif %}
+
+        <h3>Nmap</h3>
+        {% if report.recon.nmap_scan %}
+        <p>Status: {{ report.recon.nmap_scan.status }}{% if report.recon.nmap_scan.reason %} — {{ report.recon.nmap_scan.reason }}{% endif %}</p>
+        {% endif %}
+
+        <h3>Directory Enumeration</h3>
+        {% if report.recon.gobuster_scan %}
+        <p>Status: {{ report.recon.gobuster_scan.status }}{% if report.recon.gobuster_scan.reason %} — {{ report.recon.gobuster_scan.reason }}{% endif %}</p>
+        {% if report.recon.gobuster_scan.discovered_paths %}
+        <ul>{% for path in report.recon.gobuster_scan.discovered_paths %}<li>{{ path }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% endif %}
+        {% endif %}
+        {% else %}
+        <p>Recon module was not executed.</p>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <h2>Vulnerability Findings</h2>
+        {% if report.fuzzer %}
+        <p>Status: {{ report.fuzzer.status }}</p>
+        {% if report.fuzzer.nuclei_scan %}
+        <h3>Nuclei</h3>
+        <p>Status: {{ report.fuzzer.nuclei_scan.status }}, templates matched: {{ report.fuzzer.nuclei_scan.findings | length }}</p>
+        {% if report.fuzzer.nuclei_scan.warning %}<p>{{ report.fuzzer.nuclei_scan.warning }}</p>{% endif %}
+        {% endif %}
+        {% if report.fuzzer.custom_fuzzer %}
+        <h3>Custom Fuzzer</h3>
+        <ul>
+            <li>XSS findings: {{ report.fuzzer.custom_fuzzer.xss | length }}</li>
+            <li>SQLi (error-based) findings: {{ report.fuzzer.custom_fuzzer.sqli_error | length }}</li>
+            <li>SQLi (time-based) findings: {{ report.fuzzer.custom_fuzzer.sqli_time | length }}</li>
+        </ul>
+        {% endif %}
+        {% else %}
+        <p>Web Vulnerability Fuzzer was not executed.</p>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <h2>PrivEsc Vectors</h2>
+        {% if report.privesc %}
+        <p>Status: {{ report.privesc.status }}</p>
+        <p>Auth Used: {{ report.privesc.auth_used or "N/A" }}</p>
+        {% if report.privesc.reason %}<p>Note: {{ report.privesc.reason }}</p>{% endif %}
+        {% if report.privesc.findings %}
+        <h3>Vectors Explored</h3>
+        {% for key, result in report.privesc.findings.items() %}
+        <h4>{{ key | replace("_", " ") | title }}</h4>
+        <pre>{{ result.stdout if result.stdout else (result.error or "") }}</pre>
+        {% endfor %}
+        {% else %}
+        <p>No enumeration vectors were collected.</p>
+        {% endif %}
+        {% else %}
+        <p>Privilege Escalation Simulation was not executed.</p>
+        {% endif %}
+    </div>
+
+    <div class="section">
+        <h2>Log Correlation Results</h2>
+        {% if report.log_analysis %}
+        <p>Status: {{ report.log_analysis.status }}</p>
+        <p>Source: {{ report.log_analysis.source }}</p>
+        {% if report.log_analysis.reason %}<p>Note: {{ report.log_analysis.reason }}</p>{% endif %}
+        <p><strong>Detection Score:</strong> {{ report.log_analysis.detection_score }} / {{ report.log_analysis.total_lines_analyzed }} lines analyzed</p>
+        <ul>
+            <li>Nmap traces: {{ report.log_analysis.matches.nmap | length }}</li>
+            <li>Nuclei traces: {{ report.log_analysis.matches.nuclei | length }}</li>
+            <li>Polyglot payload traces: {{ report.log_analysis.matches.polyglot | length }}</li>
+        </ul>
+        {% else %}
+        <p>Blue Team Log Correlation was not executed.</p>
+        {% endif %}
+    </div>
+
+    <div class="footer"><p>Report generated by the Security Orchestration Tool.</p></div>
+</body>
+</html>
