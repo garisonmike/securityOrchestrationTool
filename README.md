@@ -126,12 +126,12 @@ cd securityOrchestrationTool
 python3 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install Python dependencies
+# Install the package (pulls in all Python dependencies)
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -e .
 
 # Verify installation
-python main.py --help
+python -m security_orchestrator --help
 ```
 
 ### Option 2: Download Release
@@ -150,14 +150,13 @@ For contributors or advanced users:
 git clone https://github.com/garisonmike/securityOrchestrationTool.git
 cd securityOrchestrationTool
 
-# Install in development mode with additional testing dependencies
+# Install in editable/development mode with the test toolchain
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-pip install -r requirements-dev.txt  # If available
+pip install -e ".[dev]"
 
-# Install pre-commit hooks
-pre-commit install
+# Run the test suite
+pytest
 ```
 
 ## Usage
@@ -170,129 +169,119 @@ pre-commit install
    .venv\Scripts\activate     # Windows
    ```
 
-2. **Run the orchestration engine**:
+2. **Run the orchestration engine interactively** (omit `--target` to be prompted):
    ```bash
-   python main.py
+   python -m security_orchestrator
    ```
 
 3. **Follow the interactive prompts** to configure:
    - Target IP address or URL
-   - Scanning aggressiveness level
-   - Module selection (Recon, Fuzzing, PrivEsc, Log Analysis)
+   - Fingerprinting OPSEC level and scan profile
+   - Module selection (recon, fuzzer, privesc, logs)
    - Report format preferences
 
 ### Advanced Usage
 
 #### Command Line Options
+
+Passing `--target` runs non-interactively (scriptable, CI-friendly); the
+interactive prompts above are a thin wrapper over this same entry point, so
+the two cannot drift.
+
 ```bash
-python main.py [OPTIONS]
+python -m security_orchestrator [OPTIONS]
 
 Options:
-  --target TEXT          Target IP address or URL
-  --aggressive          Use aggressive scanning profiles
-  --modules TEXT        Comma-separated list of modules to run
-  --output-format TEXT  Report format: markdown, html, pdf
-  --help               Show help message and exit
+  --target TEXT           Target URL or IP. If omitted, runs interactively.
+  --modules TEXT          Comma-separated modules: recon,fuzzer,privesc,logs
+  --profile {stealth,noisy}        General aggressiveness (default: stealth)
+  --opsec {stealth,noisy}          Fingerprinting OPSEC level (default: stealth)
+  --output-format {markdown,html}  Report format (default: markdown)
+  --output-dir TEXT       Directory to write the report to (default: reports)
+  --cookie TEXT           Session cookie header value for authenticated scans
+  --ssh-user TEXT         SSH username for the privesc module
+  --ssh-pass TEXT         SSH password for the privesc module
+  --log-source TEXT       Local log file, enabling log correlation without privesc
+  --help                  Show help message and exit
 ```
+
+> An HTML report is additionally converted to PDF when `wkhtmltopdf` is
+> installed; a missing binary simply means no PDF, never a failure. There is
+> no `--output-format pdf` value.
 
 #### Example Commands
 ```bash
-# Basic scan with default settings
-python main.py --target 192.168.1.100
+# Basic recon scan
+python -m security_orchestrator --target 192.168.1.100 --modules recon
 
-# Comprehensive scan with all modules
-python main.py --target https://example.com --aggressive --modules recon,fuzzing,privesc,logs
+# Comprehensive noisy scan with all modules, HTML report
+python -m security_orchestrator --target https://example.com \
+    --profile noisy --opsec noisy \
+    --modules recon,fuzzer,privesc,logs --output-format html
 
-# Generate PDF report
-python main.py --target 10.0.0.1 --output-format pdf
+# Run log correlation standalone against a local log file (no SSH needed)
+python -m security_orchestrator --target 10.0.0.1 \
+    --modules logs --log-source /var/log/apache2/access.log
 ```
 
-### Configuration Files
-
-Create a `config.yaml` file for persistent settings:
-```yaml
-# Default target configuration
-default_target: "192.168.1.0/24"
-scan_profiles:
-  stealth:
-    nmap_options: "-sS -T2 -f"
-    delay: 5
-  aggressive:
-    nmap_options: "-sS -T4 -A"
-    delay: 0
-
-# Reporting preferences
-reports:
-  format: "html"
-  output_dir: "./reports"
-  include_raw_output: false
-
-# Module-specific settings
-modules:
-  recon:
-    port_range: "1-65535"
-    service_detection: true
-  fuzzing:
-    wordlist: "/usr/share/wordlists/dirb/common.txt"
-    threads: 10
-```
+> Configuration is supplied entirely via CLI flags (or the interactive
+> prompts). A `config.yaml` file is **not** supported.
 
 ## Architecture
 
 ### Project Structure
 ```
 securityOrchestrationTool/
-├── main.py                    # Main orchestrator and CLI interface
-├── requirements.txt           # Python dependencies
-├── config.yaml               # Configuration file (optional)
-├── modules/                   # Core functionality modules
-│   ├── __init__.py
-│   ├── recon.py              # Network reconnaissance
-│   ├── web_fuzzer.py         # Web application testing
-│   ├── privesc.py            # Privilege escalation simulation
-│   ├── log_analyzer.py       # Blue team log correlation
-│   └── report_gen.py         # Report generation engine
-├── templates/                 # Jinja2 report templates
-│   ├── report.html.j2        # HTML report template
-│   └── report.md.j2          # Markdown report template
-├── securityEngineering/       # Additional resources
-├── .gitignore
-├── LICENSE
-├── README.md
-└── CONTRIBUTING.md           # Contribution guidelines
+├── security_orchestrator/         # The application package
+│   ├── __main__.py                # `python -m security_orchestrator`
+│   ├── cli.py                     # argparse + interactive entry points
+│   ├── orchestrator.py            # Sequences modules; owns gating rules
+│   ├── core/                      # Typed contracts (framework-free)
+│   │   ├── models.py              # ScanConfig, *Findings, Report (pydantic)
+│   │   ├── result.py              # Result[T] for expected failures
+│   │   ├── exceptions.py          # Programmer/setup-error hierarchy
+│   │   └── redact.py              # Redaction pass over a Report
+│   ├── adapters/                  # One class per external tool/call
+│   │   ├── http.py  nmap.py  gobuster.py  nuclei.py
+│   │   ├── ssh.py   searchsploit.py   wkhtmltopdf.py
+│   │   └── fakes.py               # Test-only Fake* counterparts
+│   ├── modules/                   # Business logic on top of adapters
+│   │   ├── recon.py  fuzzer.py  privesc.py  log_analyzer.py
+│   └── report/
+│       ├── generator.py           # Redacts, then renders a typed Report
+│       └── templates/             # report.md.j2 / report.html.j2
+├── tests/                         # pytest unit tests + conftest safety net
+├── pyproject.toml                 # Packaging, deps, pytest/coverage config
+├── .github/workflows/ci.yml       # CI: pytest on push
+├── LICENSE  README.md  CONTRIBUTING.md  CHANGELOG.md
 ```
 
 ### Module Architecture
 
-#### Reconnaissance Module (`modules/recon.py`)
-- Network discovery and port scanning
-- Service enumeration and version detection
-- OS fingerprinting and technology stack identification
-- Attack surface mapping and entry point identification
+Every module is built on injectable adapters and returns a typed findings
+model, so each capability's success/skipped/error states are explicit and
+independently testable (no live network or subprocess in tests).
 
-#### Web Fuzzer Module (`modules/web_fuzzer.py`)
-- Directory and file brute-forcing
-- Parameter discovery and injection testing
-- Custom payload generation and delivery
-- Response analysis and vulnerability classification
+#### Reconnaissance Module (`security_orchestrator/modules/recon.py`)
+- HTTP header/reachability probing and passive/active fingerprinting
+- Service/version scanning (nmap) and directory enumeration (gobuster)
+- Technology-stack detection and searchsploit mapping (recency-filtered)
 
-#### Privilege Escalation Module (`modules/privesc.py`)
-- Post-compromise simulation and testing
-- Local privilege escalation pathway identification
-- Configuration weakness assessment
-- Safe exploitation testing methodologies
+#### Web Fuzzer Module (`security_orchestrator/modules/fuzzer.py`)
+- Tech-stack-aware nuclei template tag selection
+- Custom error-based, reflected-XSS and time-based SQLi polyglot fuzzing
 
-#### Log Analyzer Module (`modules/log_analyzer.py`)
-- Security tool artifact detection
-- IOC correlation and pattern matching
-- Detection score calculation and reporting
-- Blue team validation and testing
+#### Privilege Escalation Module (`security_orchestrator/modules/privesc.py`)
+- SSH port pre-check and rate-limit detection
+- Rate-limit-aware default-credential testing and post-access enumeration
 
-#### Report Generator (`modules/report_gen.py`)
-- Multi-format report generation
-- Template-based customization
-- Risk scoring and prioritization
-- Executive and technical reporting views
+#### Log Analyzer Module (`security_orchestrator/modules/log_analyzer.py`)
+- Tool-artifact signature correlation over a local file or a remote session
+- Detection-score calculation, decoupled from the privesc SSH session
+
+#### Report Generator (`security_orchestrator/report/generator.py`)
+- Renders a typed `Report` to Markdown/HTML (optional PDF via wkhtmltopdf)
+- Mandatory redaction of session cookies/credentials before rendering
 
 ## Contributing
 

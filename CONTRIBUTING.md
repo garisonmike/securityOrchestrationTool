@@ -86,43 +86,33 @@ Before contributing, ensure you have:
    sudo apt install -y nmap gobuster whatweb nuclei wkhtmltopdf python3-pip python3-venv git
    ```
 
-3. **Set up Python environment**:
+3. **Set up the Python environment and install the package with its test
+   toolchain**:
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
    pip install --upgrade pip
-   pip install -r requirements.txt
+   pip install -e ".[dev]"
    ```
 
-4. **Install development dependencies**:
+4. **Verify installation**:
    ```bash
-   pip install pytest black flake8 mypy pre-commit bandit safety
-   ```
-
-5. **Configure pre-commit hooks**:
-   ```bash
-   pre-commit install
-   ```
-
-6. **Verify installation**:
-   ```bash
-   python main.py --help
-   pytest tests/ --verbose
+   python -m security_orchestrator --help
+   pytest
    ```
 
 ### Development Tools
 
-#### Code Quality Tools
-- **Black**: Code formatting (`black .`)
-- **Flake8**: Linting and style checking (`flake8 .`)
-- **MyPy**: Type checking (`mypy .`)
-- **Bandit**: Security linting (`bandit -r .`)
-- **Safety**: Dependency vulnerability checking (`safety check`)
+The dev toolchain is deliberately lean: **pytest** + **pytest-cov** + the
+stdlib `unittest.mock`, all declared in `pyproject.toml`'s `[project.optional
+-dependencies].dev`. No linters or security scanners (black/flake8/mypy/
+bandit/safety) are bundled or required to contribute; if you use them
+locally, that's fine, but CI only runs the test suite.
 
 #### Testing Tools
-- **Pytest**: Unit and integration testing
-- **Coverage**: Code coverage analysis (`coverage run -m pytest`)
-- **Tox**: Multi-environment testing (if configured)
+- **pytest**: the unit test suite under `tests/`
+- **pytest-cov**: coverage measurement, with a fail-under gate configured in
+  `pyproject.toml` (`[tool.pytest.ini_options].addopts`)
 
 ## Contributing Process
 
@@ -326,128 +316,67 @@ def redact_sensitive_data(output: str) -> str:
 
 ```
 tests/
-├── unit/                 # Unit tests for individual modules
-│   ├── test_recon.py
-│   ├── test_web_fuzzer.py
-│   └── test_log_analyzer.py
-├── integration/          # Integration tests for module interactions
-│   ├── test_full_scan.py
-│   └── test_report_generation.py
-├── fixtures/            # Test data and mock objects
-│   ├── sample_logs/
-│   └── mock_responses/
-└── conftest.py          # Pytest configuration and fixtures
+├── conftest.py             # Autouse safety net: blocks real socket/subprocess
+├── unit/                   # One file per adapter / module / layer
+│   ├── test_result.py  test_models.py  test_redact.py
+│   ├── test_adapters.py
+│   ├── test_recon.py  test_fuzzer.py  test_privesc.py  test_log_analyzer.py
+│   ├── test_orchestrator.py  test_cli.py  test_report.py
+│   └── test_scaffold.py    # Package-imports smoke test
+└── fixtures/               # Canned tool outputs (as needed)
 ```
 
 ### Writing Tests
 
-#### Unit Tests
-```python
-import pytest
-from unittest.mock import Mock, patch
-from modules.recon import NetworkScanner
+The core rule: **no test touches a real network or spawns a real
+subprocess.** Adapters take an injectable runner (a fake `subprocess.run` /
+`requests.get` / paramiko client), and module/orchestrator tests inject the
+`Fake*` adapters from `security_orchestrator.adapters.fakes`. The autouse
+fixture in `tests/conftest.py` monkeypatches `subprocess.run` and
+`socket.socket` to raise, so an accidental live call fails loudly.
 
-class TestNetworkScanner:
-    """Test cases for NetworkScanner class."""
-    
-    def setup_method(self):
-        """Set up test fixtures."""
-        self.scanner = NetworkScanner()
-    
-    def test_valid_ip_validation(self):
-        """Test IP address validation with valid inputs."""
-        assert self.scanner.validate_ip("192.168.1.1")
-        assert self.scanner.validate_ip("10.0.0.1")
-    
-    def test_invalid_ip_validation(self):
-        """Test IP address validation with invalid inputs."""
-        assert not self.scanner.validate_ip("invalid_ip")
-        assert not self.scanner.validate_ip("999.999.999.999")
-    
-    @patch('subprocess.run')
-    def test_nmap_execution(self, mock_subprocess):
-        """Test nmap command execution."""
-        mock_subprocess.return_value.stdout = "Nmap scan report..."
-        mock_subprocess.return_value.returncode = 0
-        
-        result = self.scanner.run_nmap("192.168.1.1", [80, 443])
-        
-        assert result is not None
-        mock_subprocess.assert_called_once()
+#### Adapter test (inject a fake runner)
+```python
+from types import SimpleNamespace
+from security_orchestrator.adapters.nmap import NmapAdapter
+
+def test_nmap_success():
+    runner = lambda *a, **k: SimpleNamespace(returncode=0, stdout="Nmap scan report...", stderr="")
+    result = NmapAdapter(runner=runner, which=lambda name: "/usr/bin/nmap").scan("host")
+    assert result.is_ok
+    assert "Nmap scan report" in result.value.raw_output
 ```
 
-#### Integration Tests
+#### Module test (inject Fake* adapters)
 ```python
-import pytest
-from main import SecurityOrchestrator
+from security_orchestrator.adapters.fakes import FakeSshAdapter
+from security_orchestrator.core.models import ModuleStatus, ScanConfig, Module
+from security_orchestrator.modules.privesc import PrivescModule
 
-class TestSecurityOrchestrator:
-    """Integration tests for the main orchestrator."""
-    
-    @pytest.mark.integration
-    def test_full_scan_workflow(self):
-        """Test complete scan workflow."""
-        orchestrator = SecurityOrchestrator()
-        
-        # Configure for safe testing
-        config = {
-            'target': '127.0.0.1',
-            'modules': ['recon'],
-            'safe_mode': True
-        }
-        
-        result = orchestrator.run_scan(config)
-        
-        assert result['status'] == 'completed'
-        assert 'recon' in result['modules_executed']
-```
-
-### Test Data and Mocks
-
-#### Creating Test Fixtures
-```python
-# conftest.py
-import pytest
-
-@pytest.fixture
-def sample_nmap_output():
-    """Provide sample nmap output for testing."""
-    return """
-    Nmap scan report for 192.168.1.1
-    PORT   STATE SERVICE
-    22/tcp open  ssh
-    80/tcp open  http
-    """
-
-@pytest.fixture
-def mock_target_config():
-    """Provide mock configuration for testing."""
-    return {
-        'target': '192.168.1.1',
-        'ports': [22, 80, 443],
-        'aggressive': False,
-        'modules': ['recon', 'web_fuzzer']
-    }
+def test_privesc_skipped_without_credentials():
+    module = PrivescModule(FakeSshAdapter(), sleep=lambda _: None)
+    config = ScanConfig(target="localhost:8080", modules=[Module.PRIVESC])
+    findings, session = module.run(config, ssh_creds=None)
+    assert findings.status is ModuleStatus.SKIPPED
+    assert findings.findings is None   # no attempt made -> None, not {}
+    assert session is None
 ```
 
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all tests (coverage + the fail-under gate are configured in pyproject.toml)
 pytest
 
-# Run with coverage
-pytest --cov=modules --cov-report=html
+# HTML coverage report
+pytest --cov=security_orchestrator --cov-report=html
 
-# Run specific test category
-pytest tests/unit/
-pytest -m integration
+# Run a single file or test
+pytest tests/unit/test_recon.py
+pytest tests/unit/test_privesc.py::test_run_success_populates_findings_and_returns_session
 
-# Run with verbose output
+# Verbose output
 pytest -v
-
-# Run specific test
-pytest tests/unit/test_recon.py::TestNetworkScanner::test_valid_ip_validation
 ```
 
 ## Security Considerations
